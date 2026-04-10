@@ -1320,12 +1320,16 @@ class RepairERP:
                 st.info("Нет сотрудников для редактирования")
 
     def show_warehouse(self):
-        """Управление складом"""
+        """Управление складом с пополнением запасов"""
         st.header("📦 Управление складом")
 
-        tab1, tab2, tab3 = st.tabs(["📋 Текущие остатки", "📊 Прогноз закупок", "➕ Добавить запчасть"])
+        # 4 вкладки вместо 3
+        tab1, tab2, tab3, tab4 = st.tabs(
+            ["📋 Текущие остатки", "📊 Прогноз закупок", "➕ Добавить запчасть", "📥 Пополнение запасов"])
 
         with tab1:
+            st.subheader("📋 Текущие остатки")
+
             search = st.text_input("🔍 Поиск запчастей", placeholder="Введите название...")
 
             df = st.session_state.spare_parts.copy()
@@ -1340,9 +1344,27 @@ class RepairERP:
 
             st.dataframe(df, use_container_width=True)
 
+            # Способ 5: Быстрое редактирование остатков
+            st.markdown("---")
+            st.subheader("✏️ Быстрое редактирование остатков")
+
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                edit_part = st.selectbox("Выберите запчасть", df['name'].tolist(), key="edit_part_select")
+            with col2:
+                new_stock = st.number_input("Новый остаток", min_value=0, value=0, key="new_stock_value")
+            with col3:
+                if st.button("💾 Обновить остаток", key="update_stock_btn"):
+                    if edit_part:
+                        idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == edit_part].index[0]
+                        old_stock = st.session_state.spare_parts.loc[idx, 'stock']
+                        st.session_state.spare_parts.loc[idx, 'stock'] = new_stock
+                        self.save_all()
+                        st.success(f"✅ Остаток '{edit_part}' изменен: {old_stock} → {new_stock}")
+                        st.rerun()
+
         with tab2:
             st.subheader("📊 Прогноз закупок запчастей")
-
             st.info("Прогноз основан на реальной статистике использования запчастей в ремонтах")
 
             col1, col2 = st.columns(2)
@@ -1350,7 +1372,6 @@ class RepairERP:
                 st.subheader("📈 На 200 ремонтов")
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
-                    # Визуализация частоты использования
                     fig_frequency = px.bar(
                         forecast_200.head(10),
                         x='Запчасть',
@@ -1361,7 +1382,6 @@ class RepairERP:
                     )
                     fig_frequency.update_traces(textposition='outside')
                     st.plotly_chart(fig_frequency, use_container_width=True)
-
                     st.dataframe(forecast_200, use_container_width=True)
                 else:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
@@ -1370,7 +1390,6 @@ class RepairERP:
                 st.subheader("📅 На месяц")
                 monthly_forecast = self.get_monthly_forecast()
                 if len(monthly_forecast) > 0:
-                    # Визуализация
                     fig_monthly = px.bar(
                         monthly_forecast.head(10),
                         x='Запчасть',
@@ -1381,7 +1400,6 @@ class RepairERP:
                     )
                     fig_monthly.update_traces(textposition='outside')
                     st.plotly_chart(fig_monthly, use_container_width=True)
-
                     st.dataframe(monthly_forecast, use_container_width=True)
                 else:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
@@ -1408,6 +1426,174 @@ class RepairERP:
                     self.save_all()
                     st.success(f"✅ Запчасть '{new_name}' добавлена")
                     st.rerun()
+
+        with tab4:
+            # Способ 3: Ручное пополнение запасов
+            st.subheader("📥 Пополнение запасов")
+            st.info("Добавьте новые поступления запчастей на склад")
+
+            # Выбор запчасти
+            parts_list = st.session_state.spare_parts['name'].tolist()
+            selected_part = st.selectbox("Выберите запчасть для пополнения", parts_list, key="restock_part")
+
+            if selected_part:
+                # Получаем текущую информацию
+                part_idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == selected_part].index[0]
+                current_stock = st.session_state.spare_parts.loc[part_idx, 'stock']
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Текущий остаток", f"{current_stock} шт.")
+                with col2:
+                    min_stock = st.session_state.spare_parts.loc[part_idx, 'min_stock']
+                    st.metric("Мин. запас", f"{min_stock} шт.")
+                with col3:
+                    order_point = st.session_state.spare_parts.loc[part_idx, 'order_point']
+                    st.metric("Точка заказа", f"{order_point} шт.")
+
+                st.markdown("---")
+
+                # Форма для добавления
+                col1, col2 = st.columns(2)
+                with col1:
+                    add_quantity = st.number_input(
+                        "Количество для добавления",
+                        min_value=1,
+                        max_value=1000,
+                        value=10,
+                        step=5,
+                        key="add_quantity"
+                    )
+
+                with col2:
+                    supplier = st.text_input("Поставщик (опционально)", placeholder="Название компании", key="supplier")
+
+                # Дополнительная информация
+                invoice_number = st.text_input("Номер накладной (опционально)", placeholder="№123456", key="invoice")
+                comment = st.text_area("Комментарий к поступлению",
+                                       placeholder="Например: новая партия, брак, возврат и т.д.",
+                                       key="restock_comment")
+
+                st.markdown("---")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Подтвердить поступление", use_container_width=True, key="confirm_restock"):
+                        # Обновляем остаток
+                        new_stock = current_stock + add_quantity
+                        st.session_state.spare_parts.loc[part_idx, 'stock'] = new_stock
+
+                        # Сохраняем изменения
+                        self.save_all()
+
+                        # Показываем успех
+                        st.success(f"✅ На склад добавлено {add_quantity} шт. '{selected_part}'")
+                        st.info(f"📊 Новый остаток: {new_stock} шт. (было: {current_stock})")
+
+                        if supplier:
+                            st.info(f"📦 Поставщик: {supplier}")
+                        if invoice_number:
+                            st.info(f"📄 Накладная: {invoice_number}")
+                        if comment:
+                            st.info(f"💬 {comment}")
+
+                        st.balloons()
+                        time.sleep(2)
+                        st.rerun()
+
+                with col2:
+                    if st.button("❌ Отмена", use_container_width=True, key="cancel_restock"):
+                        st.rerun()
+
+            st.markdown("---")
+
+            # Способ 4: Массовый импорт из Excel
+            with st.expander("📊 Массовый импорт из Excel"):
+                st.info("Загрузите Excel файл с колонками: name, stock, min_stock, order_point")
+                st.warning(
+                    "⚠️ Внимание: Если запчасть с таким названием уже существует, её остаток будет УВЕЛИЧЕН на указанное значение")
+
+                # Шаблон для скачивания
+                template_df = pd.DataFrame({
+                    'name': ['Новая запчасть 1', 'Новая запчасть 2'],
+                    'stock': [10, 20],
+                    'min_stock': [5, 10],
+                    'order_point': [8, 15]
+                })
+
+                # Сохраняем шаблон в BytesIO
+                template_buffer = BytesIO()
+                with pd.ExcelWriter(template_buffer, engine='openpyxl') as writer:
+                    template_df.to_excel(writer, sheet_name='Запчасти', index=False)
+                template_buffer.seek(0)
+
+                st.download_button(
+                    label="📥 Скачать шаблон Excel",
+                    data=template_buffer.getvalue(),
+                    file_name="template_parts.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_template"
+                )
+
+                uploaded_file = st.file_uploader("Загрузите Excel файл", type=['xlsx', 'xls'], key="bulk_upload")
+
+                if uploaded_file:
+                    try:
+                        # Читаем Excel
+                        df_bulk = pd.read_excel(uploaded_file)
+
+                        # Проверяем колонки
+                        required_columns = ['name', 'stock', 'min_stock', 'order_point']
+                        missing_columns = [col for col in required_columns if col not in df_bulk.columns]
+
+                        if missing_columns:
+                            st.error(f"❌ Отсутствуют колонки: {missing_columns}")
+                        else:
+                            # Показываем предпросмотр
+                            st.subheader("📋 Предпросмотр данных:")
+                            st.dataframe(df_bulk.head(10), use_container_width=True)
+
+                            # Подтверждение
+                            if st.button("✅ Подтвердить массовый импорт", use_container_width=True, key="confirm_bulk"):
+                                added_count = 0
+                                updated_count = 0
+
+                                for _, row in df_bulk.iterrows():
+                                    name = row['name']
+                                    stock_to_add = row.get('stock', 0)
+                                    min_stock = row.get('min_stock', 10)
+                                    order_point = row.get('order_point', 15)
+
+                                    existing = st.session_state.spare_parts[
+                                        st.session_state.spare_parts['name'] == name]
+
+                                    if len(existing) > 0:
+                                        # Обновляем существующую (увеличиваем остаток)
+                                        idx = existing.index[0]
+                                        old_stock = st.session_state.spare_parts.loc[idx, 'stock']
+                                        st.session_state.spare_parts.loc[idx, 'stock'] = old_stock + stock_to_add
+                                        updated_count += 1
+                                    else:
+                                        # Добавляем новую
+                                        new_part = pd.DataFrame([{
+                                            'name': name,
+                                            'stock': stock_to_add,
+                                            'min_stock': min_stock,
+                                            'order_point': order_point
+                                        }])
+                                        st.session_state.spare_parts = pd.concat(
+                                            [st.session_state.spare_parts, new_part], ignore_index=True)
+                                        added_count += 1
+
+                                self.save_all()
+                                st.success(
+                                    f"✅ Массовый импорт завершен! Добавлено: {added_count}, Обновлено: {updated_count}")
+                                st.balloons()
+                                time.sleep(2)
+                                st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Ошибка при чтении файла: {e}")
 
         st.markdown("---")
         st.subheader("📤 Экспорт данных склада")
