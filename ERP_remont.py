@@ -2289,7 +2289,7 @@ class RepairERP:
             st.info("Нет данных о сотрудниках для расчета KPI")
 
     def show_settings(self):
-        """Настройки"""
+        """Настройки с экспортом/импортом данных"""
         st.header("⚙️ Настройки")
 
         st.subheader("📊 Статистика системы")
@@ -2303,7 +2303,128 @@ class RepairERP:
 
         st.markdown("---")
 
-        st.subheader("📤 Экспорт всех данных")
+        # ============ НОВЫЙ РАЗДЕЛ: ЭКСПОРТ/ИМПОРТ ДАННЫХ ============
+        st.subheader("💾 Ручной экспорт/импорт данных")
+        st.info("🔐 Рекомендуется делать резервную копию перед обновлением кода")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### 📤 Экспорт данных")
+            st.write("Создает резервную копию всех данных в JSON файл")
+
+            if st.button("📥 Создать резервную копию", use_container_width=True, key="export_backup_btn"):
+                # Собираем все данные
+                backup_data = {
+                    'export_date': datetime.datetime.now().isoformat(),
+                    'version': '1.0',
+                    'spare_parts': st.session_state.spare_parts.to_dict('records'),
+                    'works': st.session_state.works.to_dict('records'),
+                    'employees': st.session_state.employees.to_dict('records'),
+                    'repairs': st.session_state.repairs.to_dict('records'),
+                    'work_days': st.session_state.work_days.to_dict('records'),
+                    'statistics': {
+                        'total_repairs': len(st.session_state.repairs),
+                        'total_employees': len(st.session_state.employees),
+                        'total_parts': len(st.session_state.spare_parts),
+                        'completed_repairs': len(
+                            st.session_state.repairs[st.session_state.repairs['status'] == 'Завершен']) if len(
+                            st.session_state.repairs) > 0 else 0
+                    }
+                }
+
+                # Конвертируем в JSON
+                backup_json = json.dumps(backup_data, default=str, ensure_ascii=False, indent=2)
+
+                # Создаем имя файла с датой
+                filename = f"erp_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+                st.download_button(
+                    label="💾 Скачать резервную копию",
+                    data=backup_json,
+                    file_name=filename,
+                    mime="application/json",
+                    use_container_width=True,
+                    key="download_backup_btn"
+                )
+                st.success("✅ Резервная копия создана! Нажмите кнопку выше для скачивания.")
+
+        with col2:
+            st.markdown("### 📥 Импорт данных")
+            st.write("Восстанавливает данные из ранее созданной резервной копии")
+
+            uploaded_file = st.file_uploader(
+                "Выберите файл резервной копии (.json)",
+                type=['json'],
+                key="restore_uploader"
+            )
+
+            if uploaded_file is not None:
+                try:
+                    # Читаем JSON файл
+                    backup_data = json.load(uploaded_file)
+
+                    # Показываем информацию о файле
+                    st.info(f"📁 Файл создан: {backup_data.get('export_date', 'Неизвестно')}")
+                    st.info(f"📊 Статистика в бэкапе: {backup_data.get('statistics', {})}")
+
+                    col_confirm, col_cancel = st.columns(2)
+                    with col_confirm:
+                        if st.button("⚠️ Восстановить данные", use_container_width=True, key="confirm_restore_btn"):
+                            try:
+                                # Восстанавливаем данные
+                                if 'spare_parts' in backup_data:
+                                    st.session_state.spare_parts = pd.DataFrame(backup_data['spare_parts'])
+                                    st.success(f"✅ Восстановлено {len(backup_data['spare_parts'])} запчастей")
+
+                                if 'works' in backup_data:
+                                    st.session_state.works = pd.DataFrame(backup_data['works'])
+                                    st.success(f"✅ Восстановлено {len(backup_data['works'])} видов работ")
+
+                                if 'employees' in backup_data:
+                                    st.session_state.employees = pd.DataFrame(backup_data['employees'])
+                                    st.success(f"✅ Восстановлено {len(backup_data['employees'])} сотрудников")
+
+                                if 'repairs' in backup_data:
+                                    st.session_state.repairs = pd.DataFrame(backup_data['repairs'])
+                                    st.success(f"✅ Восстановлено {len(backup_data['repairs'])} ремонтов")
+
+                                if 'work_days' in backup_data:
+                                    st.session_state.work_days = pd.DataFrame(backup_data['work_days'])
+                                    st.success(f"✅ Восстановлено {len(backup_data['work_days'])} рабочих дней")
+
+                                # Сохраняем все данные
+                                self.save_all()
+
+                                st.success("🎉 Данные успешно восстановлены! Страница будет перезагружена.")
+                                st.balloons()
+                                time.sleep(2)
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"❌ Ошибка при восстановлении: {e}")
+
+                    with col_cancel:
+                        if st.button("❌ Отмена", use_container_width=True, key="cancel_restore_btn"):
+                            st.info("Восстановление отменено")
+                            st.rerun()
+
+                except json.JSONDecodeError:
+                    st.error("❌ Ошибка: выбранный файл не является корректной резервной копией")
+                except Exception as e:
+                    st.error(f"❌ Ошибка при чтении файла: {e}")
+
+        st.markdown("---")
+        st.subheader("🔄 Автоматическое резервное копирование")
+        st.info("💡 Совет: Регулярно создавайте резервные копии перед важными изменениями")
+
+        # Добавляем информацию о последнем бэкапе
+        st.caption("📌 Рекомендуется хранить резервные копии в надежном месте (облако, внешний диск)")
+
+        st.markdown("---")
+
+        # ============ ОСТАЛЬНЫЕ НАСТРОЙКИ ============
+        st.subheader("📤 Экспорт всех данных в Excel")
         if st.button("📥 Экспорт всех данных в Excel", use_container_width=True):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -2326,21 +2447,29 @@ class RepairERP:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🧹 Очистить все ремонты", use_container_width=True):
-                st.session_state.repairs = pd.DataFrame(columns=st.session_state.repairs.columns)
-                self.save_all()
-                st.success("Все ремонты очищены!")
-                st.rerun()
+                # Создаем предупреждение
+                st.warning(
+                    "⚠️ ВНИМАНИЕ! Это действие необратимо. Рекомендуется сделать резервную копию перед очисткой.")
+                confirm = st.checkbox("Я понимаю, что все ремонты будут удалены безвозвратно")
+                if confirm:
+                    st.session_state.repairs = pd.DataFrame(columns=st.session_state.repairs.columns)
+                    self.save_all()
+                    st.success("Все ремонты очищены!")
+                    st.rerun()
 
         with col2:
             if st.button("🔄 Сбросить все данные", use_container_width=True):
-                for key in ['spare_parts', 'works', 'employees', 'repairs', 'work_days']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                self.init_session_state()
-                self.save_all()
-                st.success("Все данные сброшены!")
-                st.rerun()
-
+                st.error("⚠️ ОПАСНО! Это удалит ВСЕ данные без возможности восстановления!")
+                confirm = st.checkbox("Я понимаю, что все данные будут безвозвратно удалены")
+                confirm2 = st.text_input("Введите 'СБРОСИТЬ' для подтверждения")
+                if confirm and confirm2 == "СБРОСИТЬ":
+                    for key in ['spare_parts', 'works', 'employees', 'repairs', 'work_days']:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    self.init_session_state()
+                    self.save_all()
+                    st.success("Все данные сброшены!")
+                    st.rerun()
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
