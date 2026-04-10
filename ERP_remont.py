@@ -580,44 +580,70 @@ class RepairERP:
             return False
 
     def get_parts_forecast(self, target_repairs=200):
-        """Прогноз закупок запчастей"""
+        """Прогноз закупок запчастей на основе реального использования"""
         if len(st.session_state.repairs) == 0:
             return pd.DataFrame()
 
+        # Собираем статистику использования запчастей
         parts_usage = {}
+        total_repairs_count = len(st.session_state.repairs)
+
         for _, repair in st.session_state.repairs.iterrows():
             if repair['parts'] and repair['parts'] != '':
                 parts_list = self.parse_parts_list(repair['parts'])
                 for part_name, qty in parts_list:
                     if part_name not in parts_usage:
-                        parts_usage[part_name] = []
-                    parts_usage[part_name].append(qty)
+                        parts_usage[part_name] = {
+                            'total_used': 0,
+                            'repairs_with_part': 0
+                        }
+                    parts_usage[part_name]['total_used'] += qty
+                    parts_usage[part_name]['repairs_with_part'] += 1
+
+        # Если нет данных об использовании
+        if not parts_usage:
+            return pd.DataFrame()
 
         forecast_data = []
-        for part_name, usage_list in parts_usage.items():
-            avg_usage = np.mean(usage_list)
-            needed_200 = avg_usage * target_repairs
+        for part_name, usage in parts_usage.items():
+            # Реальное среднее использование на ремонт
+            avg_usage_per_repair = usage['total_used'] / total_repairs_count
 
+            # Прогноз на целевое количество ремонтов
+            needed_for_target = avg_usage_per_repair * target_repairs
+
+            # Текущий остаток
             part_info = st.session_state.spare_parts[
                 st.session_state.spare_parts['name'] == part_name
                 ]
             current_stock = part_info['stock'].values[0] if len(part_info) > 0 else 0
 
-            recommend_200 = max(0, needed_200 - current_stock)
+            # Рекомендуемая закупка
+            recommend = max(0, needed_for_target - current_stock)
+
+            # Процент ремонтов, в которых используется эта запчасть
+            usage_percentage = (usage['repairs_with_part'] / total_repairs_count) * 100
 
             forecast_data.append({
                 'Запчасть': part_name,
-                'Среднее использование на ремонт': round(avg_usage, 2),
-                'На 200 ремонтов': round(needed_200, 0),
+                'Всего использовано': usage['total_used'],
+                'В скольких ремонтах': usage['repairs_with_part'],
+                'Процент использования': f"{usage_percentage:.1f}%",
+                'Среднее на ремонт': round(avg_usage_per_repair, 2),
+                f'На {target_repairs} ремонтов': round(needed_for_target, 0),
                 'Текущий остаток': current_stock,
-                'Рекомендуемая закупка (200 рем.)': round(recommend_200, 0),
+                'Рекомендуемая закупка': round(recommend, 0),
                 'Точка заказа': part_info['order_point'].values[0] if len(part_info) > 0 else 0
             })
 
-        return pd.DataFrame(forecast_data)
+        # Сортируем по рекомендуемой закупке (самые нужные сверху)
+        forecast_df = pd.DataFrame(forecast_data)
+        forecast_df = forecast_df.sort_values('Рекомендуемая закупка', ascending=False)
+
+        return forecast_df
 
     def get_monthly_forecast(self):
-        """Прогноз на месяц на основе статистики"""
+        """Прогноз на месяц на основе реальной статистики"""
         if len(st.session_state.repairs) == 0:
             return pd.DataFrame()
 
@@ -625,32 +651,49 @@ class RepairERP:
         repairs['date_dt'] = pd.to_datetime(repairs['date_receipt'])
         repairs['month'] = repairs['date_dt'].dt.to_period('M')
 
+        # Среднее количество ремонтов в месяц
         monthly_counts = repairs.groupby('month').size()
-        avg_monthly = monthly_counts.mean() if len(monthly_counts) > 0 else 0
-        forecast_months = int(avg_monthly) if avg_monthly > 0 else 10
+        avg_monthly_repairs = monthly_counts.mean() if len(monthly_counts) > 0 else 10
+        forecast_months = max(1, int(avg_monthly_repairs))
 
+        # Общая статистика использования
+        total_repairs = len(repairs)
         parts_usage = {}
+
         for _, repair in repairs.iterrows():
             if repair['parts'] and repair['parts'] != '':
                 parts_list = self.parse_parts_list(repair['parts'])
                 for part_name, qty in parts_list:
                     if part_name not in parts_usage:
-                        parts_usage[part_name] = []
-                    parts_usage[part_name].append(qty)
+                        parts_usage[part_name] = {
+                            'total_used': 0,
+                            'repairs_with_part': 0
+                        }
+                    parts_usage[part_name]['total_used'] += qty
+                    parts_usage[part_name]['repairs_with_part'] += 1
+
+        if not parts_usage:
+            return pd.DataFrame()
 
         forecast_data = []
-        for part_name, usage_list in parts_usage.items():
-            avg_usage = np.mean(usage_list)
-            needed_monthly = avg_usage * forecast_months
+        for part_name, usage in parts_usage.items():
+            # Реальное среднее использование на ремонт
+            avg_usage_per_repair = usage['total_used'] / total_repairs
+
+            # Прогноз на месяц
+            needed_monthly = avg_usage_per_repair * forecast_months
 
             part_info = st.session_state.spare_parts[
                 st.session_state.spare_parts['name'] == part_name
                 ]
             current_stock = part_info['stock'].values[0] if len(part_info) > 0 else 0
 
+            usage_percentage = (usage['repairs_with_part'] / total_repairs) * 100
+
             forecast_data.append({
                 'Запчасть': part_name,
-                'Среднее использование на ремонт': round(avg_usage, 2),
+                'Используется в': f"{usage_percentage:.1f}% ремонтов",
+                'Среднее на ремонт': round(avg_usage_per_repair, 2),
                 'Прогноз ремонтов в месяц': forecast_months,
                 'Необходимо на месяц': round(needed_monthly, 0),
                 'Текущий остаток': current_stock,
@@ -1300,13 +1343,25 @@ class RepairERP:
         with tab2:
             st.subheader("📊 Прогноз закупок запчастей")
 
-            st.info("Прогноз основан на статистике использования запчастей в ремонтах")
+            st.info("Прогноз основан на реальной статистике использования запчастей в ремонтах")
 
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("📈 На 200 ремонтов")
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
+                    # Визуализация частоты использования
+                    fig_frequency = px.bar(
+                        forecast_200.head(10),
+                        x='Запчасть',
+                        y='Процент использования',
+                        title='Частота использования запчастей (%)',
+                        text='Процент использования',
+                        color='Процент использования'
+                    )
+                    fig_frequency.update_traces(textposition='outside')
+                    st.plotly_chart(fig_frequency, use_container_width=True)
+
                     st.dataframe(forecast_200, use_container_width=True)
                 else:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
@@ -1315,6 +1370,18 @@ class RepairERP:
                 st.subheader("📅 На месяц")
                 monthly_forecast = self.get_monthly_forecast()
                 if len(monthly_forecast) > 0:
+                    # Визуализация
+                    fig_monthly = px.bar(
+                        monthly_forecast.head(10),
+                        x='Запчасть',
+                        y='Рекомендуемая закупка',
+                        title='Рекомендуемая закупка на месяц',
+                        text='Рекомендуемая закупка',
+                        color='Рекомендуемая закупка'
+                    )
+                    fig_monthly.update_traces(textposition='outside')
+                    st.plotly_chart(fig_monthly, use_container_width=True)
+
                     st.dataframe(monthly_forecast, use_container_width=True)
                 else:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
@@ -1393,7 +1460,6 @@ class RepairERP:
 
             # Фильтрация по периоду
             if analytics_type == "По дням":
-                # Фильтр по конкретному дню
                 selected_date = st.date_input("Выберите дату", datetime.date.today(), key="analytics_date")
                 period_repairs = repairs[repairs['date_dt'].dt.date == selected_date]
                 period_label = selected_date.strftime('%d.%m.%Y')
@@ -1455,7 +1521,6 @@ class RepairERP:
             if len(period_repairs) > 0:
                 col1, col2 = st.columns(2)
                 with col1:
-                    # Распределение по типам ремонта
                     type_counts = period_repairs['repair_type'].value_counts()
                     if len(type_counts) > 0:
                         fig = px.pie(
@@ -1468,7 +1533,6 @@ class RepairERP:
                         st.plotly_chart(fig, use_container_width=True)
 
                 with col2:
-                    # Распределение по приоритетам
                     priority_counts = period_repairs['priority'].value_counts()
                     if len(priority_counts) > 0:
                         colors = {'Высокий': '#ff6b6b', 'Средний': '#ffd93d', 'Низкий': '#6bcb77'}
@@ -1483,7 +1547,6 @@ class RepairERP:
                         fig.update_traces(textposition='outside')
                         st.plotly_chart(fig, use_container_width=True)
 
-                # Статусы ремонтов
                 status_counts = period_repairs['status'].value_counts()
                 if len(status_counts) > 0:
                     fig = px.bar(
@@ -1501,10 +1564,8 @@ class RepairERP:
             st.subheader(f"📋 Статистика ремонтов за {period_label}")
 
             if len(period_repairs) > 0:
-                # Основные метрики
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    # Количество ремонтов в день/месяц/год
                     if analytics_type == "По дням":
                         st.metric("📊 Ремонтов за день", len(period_repairs))
                     elif analytics_type == "По месяцам":
@@ -1518,25 +1579,21 @@ class RepairERP:
                         st.metric("📈 В среднем в месяц", f"{avg_per_month:.1f}")
 
                 with col2:
-                    # В ремонте vs Завершено
                     in_repair = len(period_repairs[period_repairs['status'] == 'В работе'])
                     closed = len(period_repairs[period_repairs['status'] == 'Завершен'])
                     st.metric("🔄 В ремонте", in_repair)
                     st.metric("✅ Закрыто", closed)
 
                 with col3:
-                    # Процент завершения
                     completion_rate = (closed / len(period_repairs) * 100) if len(period_repairs) > 0 else 0
                     st.metric("📊 Процент завершения", f"{completion_rate:.1f}%")
 
                 st.markdown("---")
 
-                # Динамика ремонтов по дням (для месяца и года)
                 if analytics_type in ["По месяцам", "По годам"]:
                     st.subheader("📈 Динамика поступлений ремонтов")
 
                     if analytics_type == "По месяцам":
-                        # Создаем данные по дням месяца
                         days_in_month = calendar.monthrange(year, month)[1]
                         daily_counts = []
                         for day in range(1, days_in_month + 1):
@@ -1556,7 +1613,6 @@ class RepairERP:
                         fig.update_layout(xaxis_title="Дата", yaxis_title="Количество ремонтов")
                         st.plotly_chart(fig, use_container_width=True)
                     else:
-                        # По месяцам за год
                         monthly_counts = []
                         for m in range(1, 13):
                             count = len(period_repairs[
@@ -1583,7 +1639,6 @@ class RepairERP:
             st.subheader(f"🏆 KPI сотрудников за {period_label}")
 
             if len(st.session_state.employees) > 0:
-                # Общая статистика по всем сотрудникам
                 total_repairs = len(period_repairs)
                 total_employees = len(st.session_state.employees)
                 avg_per_employee = total_repairs / total_employees if total_employees > 0 else 0
@@ -1598,7 +1653,6 @@ class RepairERP:
 
                 st.markdown("---")
 
-                # Статистика по каждому сотруднику
                 kpi_data = []
                 for _, emp in st.session_state.employees.iterrows():
                     emp_repairs = period_repairs[
@@ -1626,7 +1680,6 @@ class RepairERP:
                 kpi_df = pd.DataFrame(kpi_data).sort_values('Ремонтов', ascending=False)
                 st.dataframe(kpi_df, use_container_width=True)
 
-                # Визуализация KPI
                 st.markdown("---")
                 st.subheader("📊 Визуализация KPI")
 
@@ -1655,7 +1708,6 @@ class RepairERP:
                     fig2.update_traces(textposition='outside')
                     st.plotly_chart(fig2, use_container_width=True)
 
-                # Производительность
                 fig3 = px.bar(
                     kpi_df,
                     x='Сотрудник',
@@ -1673,7 +1725,6 @@ class RepairERP:
         with tab4:
             st.subheader("📦 Аналитика склада")
 
-            # Общая статистика склада
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("📦 Всего запчастей", len(st.session_state.spare_parts))
@@ -1690,7 +1741,6 @@ class RepairERP:
 
             st.markdown("---")
 
-            # Запчасти с дефицитом
             low_stock = st.session_state.spare_parts[
                 st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
                 ]
@@ -1703,20 +1753,31 @@ class RepairERP:
             st.markdown("---")
             st.subheader("📊 Прогноз закупок")
 
-            st.info("Прогноз основан на статистике использования запчастей в ремонтах")
+            st.info("Прогноз основан на реальной статистике использования запчастей в ремонтах")
 
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### 📈 На 200 ремонтов")
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
-                    # Визуализация прогноза
+                    fig_freq = px.bar(
+                        forecast_200.head(10),
+                        x='Запчасть',
+                        y='Процент использования',
+                        title='Частота использования запчастей (%)',
+                        text='Процент использования',
+                        color='Процент использования'
+                    )
+                    fig_freq.update_traces(textposition='outside')
+                    st.plotly_chart(fig_freq, use_container_width=True)
+
                     fig = px.bar(
                         forecast_200.head(10),
                         x='Запчасть',
-                        y='Рекомендуемая закупка (200 рем.)',
+                        y='Рекомендуемая закупка',
                         title='Рекомендуемая закупка на 200 ремонтов',
-                        text='Рекомендуемая закупка (200 рем.)'
+                        text='Рекомендуемая закупка',
+                        color='Рекомендуемая закупка'
                     )
                     fig.update_traces(textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
@@ -1728,13 +1789,13 @@ class RepairERP:
                 st.markdown("### 📅 На месяц")
                 monthly_forecast = self.get_monthly_forecast()
                 if len(monthly_forecast) > 0:
-                    # Визуализация месячного прогноза
                     fig = px.bar(
                         monthly_forecast.head(10),
                         x='Запчасть',
                         y='Рекомендуемая закупка',
                         title='Рекомендуемая закупка на месяц',
-                        text='Рекомендуемая закупка'
+                        text='Рекомендуемая закупка',
+                        color='Рекомендуемая закупка'
                     )
                     fig.update_traces(textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
@@ -1775,7 +1836,6 @@ class RepairERP:
                 (repairs['date_dt'].dt.month == report_month)
                 ].copy()
 
-            # Фильтрация рабочих дней
             if len(st.session_state.work_days) > 0:
                 work_days = st.session_state.work_days.copy()
                 work_days['date_dt'] = pd.to_datetime(work_days['date'])
@@ -1786,7 +1846,6 @@ class RepairERP:
             else:
                 period_days = pd.DataFrame()
 
-            # Создание вкладок для разных частей отчета
             report_tab1, report_tab2, report_tab3, report_tab4 = st.tabs(
                 ["📊 Дашборд", "📋 Ремонты", "🏆 KPI сотрудников", "📦 Аналитика склада"]
             )
@@ -1811,7 +1870,6 @@ class RepairERP:
 
                 st.markdown("---")
 
-                # KPI
                 if len(period_repairs) > 0:
                     completed_repairs = period_repairs[period_repairs['status'] == 'Завершен']
                     avg_time = 0
@@ -1900,7 +1958,6 @@ class RepairERP:
                     kpi_df = pd.DataFrame(kpi_data).sort_values('Ремонтов', ascending=False)
                     st.dataframe(kpi_df, use_container_width=True)
 
-                    # Графики
                     col1, col2 = st.columns(2)
                     with col1:
                         fig1 = px.bar(kpi_df, x='Сотрудник', y='Ремонтов', title='Ремонты по сотрудникам',
@@ -1916,7 +1973,6 @@ class RepairERP:
             with report_tab4:
                 st.subheader("📦 Аналитика склада")
 
-                # Остатки и дефицит
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("📦 Всего запчастей", len(st.session_state.spare_parts))
@@ -1933,7 +1989,6 @@ class RepairERP:
 
                 st.markdown("---")
 
-                # Запчасти с дефицитом
                 low_stock = st.session_state.spare_parts[
                     st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
                     ]
@@ -1943,7 +1998,6 @@ class RepairERP:
                 else:
                     st.success("✅ Все запчасти в достаточном количестве")
 
-                # Прогнозы
                 st.markdown("---")
                 st.subheader("📊 Прогнозы закупок")
 
@@ -1952,12 +2006,10 @@ class RepairERP:
                     st.caption("Прогноз на 200 ремонтов")
                     st.dataframe(forecast_200.head(10), use_container_width=True)
 
-            # Экспорт отчета
             st.markdown("---")
             if st.button("📥 Экспорт полного отчета в Excel", use_container_width=True):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    # Дашборд
                     dashboard_data = pd.DataFrame([{
                         'Месяц': f"{report_month:02d}.{report_year}",
                         'Всего ремонтов': len(period_repairs),
@@ -1970,11 +2022,9 @@ class RepairERP:
                     }])
                     dashboard_data.to_excel(writer, sheet_name='Дашборд', index=False)
 
-                    # Ремонты
                     if len(period_repairs) > 0:
                         period_repairs.to_excel(writer, sheet_name='Ремонты', index=False)
 
-                    # KPI сотрудников
                     if len(st.session_state.employees) > 0:
                         kpi_data = []
                         for _, emp in st.session_state.employees.iterrows():
@@ -1993,10 +2043,8 @@ class RepairERP:
                             })
                         pd.DataFrame(kpi_data).to_excel(writer, sheet_name='KPI', index=False)
 
-                    # Аналитика склада
                     st.session_state.spare_parts.to_excel(writer, sheet_name='Склад', index=False)
 
-                    # Прогнозы
                     forecast_200 = self.get_parts_forecast(200)
                     if len(forecast_200) > 0:
                         forecast_200.to_excel(writer, sheet_name='Прогноз_200', index=False)
@@ -2014,7 +2062,6 @@ class RepairERP:
         """Учет отработанных дней с календарем"""
         st.header("📅 Учет отработанных дней")
 
-        # Быстрая отметка
         st.subheader("🚀 Быстрая отметка")
 
         col1, col2, col3 = st.columns([2, 2, 1])
@@ -2036,7 +2083,6 @@ class RepairERP:
 
         st.markdown("---")
 
-        # Календарь
         st.subheader("📅 Календарь отработанных дней")
 
         col1, col2 = st.columns([3, 1])
@@ -2050,17 +2096,14 @@ class RepairERP:
             st.markdown("🟢 **Зеленый** - есть работавшие")
             st.markdown("🔴 **Красный** - нет работавших")
 
-        # Получаем данные за месяц
         start_date = datetime.date(calendar_year, calendar_month, 1)
         if calendar_month == 12:
             end_date = datetime.date(calendar_year + 1, 1, 1) - timedelta(days=1)
         else:
             end_date = datetime.date(calendar_year, calendar_month + 1, 1) - timedelta(days=1)
 
-        # Создаем календарь
         cal = calendar.monthcalendar(calendar_year, calendar_month)
 
-        # Получаем работавших в каждый день
         work_by_date = {}
         if len(st.session_state.work_days) > 0:
             for _, day in st.session_state.work_days.iterrows():
@@ -2070,16 +2113,13 @@ class RepairERP:
                         work_by_date[date_str] = []
                     work_by_date[date_str].append(day['employee'])
 
-        # Отображаем календарь
         st.markdown("---")
 
-        # Заголовки дней недели
         days = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
         cols = st.columns(7)
         for i, day in enumerate(days):
             cols[i].markdown(f"**{day}**")
 
-        # Отображение дней
         for week in cal:
             cols = st.columns(7)
             for i, day in enumerate(week):
@@ -2090,7 +2130,6 @@ class RepairERP:
                     date_str = current_date.isoformat()
 
                     if date_str in work_by_date:
-                        # Есть работавшие
                         employees_list = ", ".join(work_by_date[date_str])
                         cols[i].markdown(
                             f'<div class="calendar-day-work" title="Работали: {employees_list}">'
@@ -2100,7 +2139,6 @@ class RepairERP:
                             unsafe_allow_html=True
                         )
                     else:
-                        # Нет работавших
                         cols[i].markdown(
                             f'<div class="calendar-day-off" title="Нет работавших">'
                             f'<b>{day}</b><br>'
@@ -2111,7 +2149,6 @@ class RepairERP:
 
         st.markdown("---")
 
-        # Детальная информация по выбранному дню
         st.subheader("📋 Детальная информация по дню")
 
         selected_date = st.date_input("Выберите дату для просмотра", datetime.date.today(), key="detail_date")
@@ -2124,7 +2161,6 @@ class RepairERP:
                 if len(emp_data) > 0:
                     st.write(f"• {emp} ({emp_data.iloc[0]['role']})")
 
-            # Показать записи о рабочих днях
             day_records = st.session_state.work_days[st.session_state.work_days['date'] == date_str]
             if len(day_records) > 0:
                 st.write("**Детали:**")
@@ -2136,7 +2172,6 @@ class RepairERP:
 
         st.markdown("---")
 
-        # Список всех отработанных дней
         with st.expander("📋 Полный список отработанных дней"):
             if len(st.session_state.work_days) > 0:
                 filtered_days = st.session_state.work_days.copy()
