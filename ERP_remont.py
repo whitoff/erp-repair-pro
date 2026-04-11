@@ -16,12 +16,13 @@ import numpy as np
 from datetime import timedelta
 import calendar
 import warnings
+from collections import Counter
 
 warnings.filterwarnings('ignore')
 
 # ==================== КОНФИГУРАЦИЯ ====================
 st.set_page_config(
-    page_title="ERP Ремонтный цех Pro",
+    page_title="CRM Ремонтный цех Pro",
     page_icon="🔧",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -31,9 +32,147 @@ st.set_page_config(
 DATA_FOLDER = Path("erp_data")
 DATA_FOLDER.mkdir(exist_ok=True)
 
+# ==================== СОВРЕМЕННЫЙ CSS ДИЗАЙН ====================
+st.markdown("""
+<style>
+    /* Современные переменные */
+    :root {
+        --primary: #6366f1;
+        --primary-dark: #4f46e5;
+        --secondary: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --dark: #1e293b;
+        --gray: #64748b;
+        --light: #f8fafc;
+    }
+
+    /* Главный хедер в стиле CRM */
+    .crm-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem 2rem;
+        border-radius: 20px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+
+    .crm-header h1 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 700;
+    }
+
+    .crm-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.9;
+    }
+
+    /* Современные карточки метрик */
+    .metric-card-modern {
+        background: white;
+        border-radius: 20px;
+        padding: 1.25rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        border: 1px solid #e2e8f0;
+    }
+
+    .metric-card-modern:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 25px -12px rgba(0,0,0,0.1);
+        border-color: #cbd5e1;
+    }
+
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        margin-bottom: 1rem;
+    }
+
+    .metric-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .metric-label {
+        font-size: 14px;
+        color: #64748b;
+        margin-top: 0.25rem;
+    }
+
+    /* Анимации */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in {
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Боковая панель - белый текст */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    }
+
+    [data-testid="stSidebar"] .stMarkdown {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] .stMarkdown * {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] .stRadio label {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] .stRadio div {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3, 
+    [data-testid="stSidebar"] p {
+        color: white !important;
+    }
+
+    /* Кнопки */
+    .stButton > button {
+        border-radius: 12px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        border: none;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    /* Уведомления */
+    .notification-badge {
+        background: #ef4444;
+        color: white;
+        border-radius: 50%;
+        padding: 2px 8px;
+        font-size: 12px;
+        margin-left: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ==================== СПРАВОЧНИК ПРАЗДНИЧНЫХ ДНЕЙ ====================
 
-# Словарь фиксированных праздничных дней (только официальные праздники РФ)
 FIXED_HOLIDAYS = {
     (1, 1): "Новый год",
     (1, 2): "Новый год",
@@ -51,9 +190,7 @@ FIXED_HOLIDAYS = {
     (11, 4): "День народного единства",
 }
 
-# Праздничные дни на 2026 год с учетом переносов
 HOLIDAYS_2026 = {
-    # Январь - новогодние праздники (1-8 января)
     datetime.date(2026, 1, 1): "Новый год",
     datetime.date(2026, 1, 2): "Новый год",
     datetime.date(2026, 1, 3): "Новый год",
@@ -62,36 +199,23 @@ HOLIDAYS_2026 = {
     datetime.date(2026, 1, 6): "Новый год",
     datetime.date(2026, 1, 7): "Рождество Христово",
     datetime.date(2026, 1, 8): "Новогодние каникулы",
-
-    # Февраль
     datetime.date(2026, 2, 23): "День защитника Отечества",
-
-    # Март
     datetime.date(2026, 3, 8): "Международный женский день",
     datetime.date(2026, 3, 9): "Перенос с 8 марта",
-
-    # Май
     datetime.date(2026, 5, 1): "Праздник Весны и Труда",
     datetime.date(2026, 5, 4): "Перенос с 2 мая",
     datetime.date(2026, 5, 9): "День Победы",
     datetime.date(2026, 5, 11): "Перенос с 10 мая",
-
-    # Июнь
     datetime.date(2026, 6, 12): "День России",
     datetime.date(2026, 6, 15): "Перенос с 13 июня",
-
-    # Ноябрь
     datetime.date(2026, 11, 4): "День народного единства",
     datetime.date(2026, 11, 3): "Перенос с 1 ноября",
 }
 
 
 def get_holidays_for_year(year):
-    """Получение всех праздничных дней для указанного года"""
     if year == 2026:
         return HOLIDAYS_2026.copy()
-
-    # Для других годов используем стандартные праздники
     holidays = {}
     for (month, day), name in FIXED_HOLIDAYS.items():
         try:
@@ -103,7 +227,6 @@ def get_holidays_for_year(year):
 
 
 def is_holiday(date):
-    """Проверка, является ли дата ПРАЗДНИЧНЫМ днем (только официальные праздники)"""
     holidays = get_holidays_for_year(date.year)
     if date in holidays:
         return True, holidays[date]
@@ -111,20 +234,18 @@ def is_holiday(date):
 
 
 def is_weekend(date):
-    """Проверка, является ли дата выходным днем (суббота или воскресенье)"""
     return date.weekday() >= 5
 
 
 def get_workday_info(date):
-    """Получение информации о рабочем дне"""
     is_hol, hol_name = is_holiday(date)
     is_week = is_weekend(date)
 
     if is_hol:
-        payment_multiplier = 2.0  # Праздничные дни x2
+        payment_multiplier = 2.0
         day_type = "holiday"
     else:
-        payment_multiplier = 1.0  # Выходные и будни x1
+        payment_multiplier = 1.0
         day_type = "weekend" if is_week else "workday"
 
     return {
@@ -137,7 +258,6 @@ def get_workday_info(date):
 
 
 def get_advance_dates(year, month):
-    """Получение дат аванса для указанного месяца (5 и 20 числа)"""
     advance_dates = []
     try:
         date_5 = datetime.date(year, month, 5)
@@ -150,7 +270,6 @@ def get_advance_dates(year, month):
 
 
 def get_workdays_before_date(employee, target_date, work_days_df):
-    """Подсчет отработанных дней сотрудником до указанной даты"""
     if len(work_days_df) == 0:
         return 0, 0, 0
 
@@ -167,104 +286,8 @@ def get_workdays_before_date(employee, target_date, work_days_df):
     return total_days, regular_days, holiday_days
 
 
-# Стилизация
-st.markdown("""
-<style>
-    .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        color: white;
-        margin-bottom: 2rem;
-        text-align: center;
-    }
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
-        transition: transform 0.3s;
-    }
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-    }
-    .stButton > button {
-        border-radius: 8px;
-        transition: all 0.3s;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    .workday-btn {
-        background-color: #4CAF50;
-        color: white;
-        font-weight: bold;
-    }
-    .calendar-day-work {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .calendar-day-work:hover {
-        background-color: #c3e6cb;
-        transform: scale(1.02);
-    }
-    .calendar-day-off {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .calendar-day-off:hover {
-        background-color: #f5c6cb;
-        transform: scale(1.02);
-    }
-    .calendar-day-holiday {
-        background-color: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .calendar-day-holiday:hover {
-        background-color: #ffeaa7;
-        transform: scale(1.02);
-    }
-    .calendar-day-empty {
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-    }
-    .holiday-badge {
-        background-color: #ffc107;
-        color: #856404;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
 # ==================== КЛАСС ДЛЯ ЭКСПОРТА ====================
 class ExportManager:
-    """Класс для экспорта данных в различные форматы"""
-
     @staticmethod
     def export_to_excel(data, filename, sheet_name="Данные"):
         output = BytesIO()
@@ -286,9 +309,6 @@ class ExportManager:
                 type_stats = repairs_df['repair_type'].value_counts().reset_index()
                 type_stats.columns = ['Тип ремонта', 'Количество']
                 type_stats.to_excel(writer, sheet_name='Типы ремонтов', index=False)
-                priority_stats = repairs_df['priority'].value_counts().reset_index()
-                priority_stats.columns = ['Приоритет', 'Количество']
-                priority_stats.to_excel(writer, sheet_name='Приоритеты', index=False)
 
             if len(spare_parts_df) > 0:
                 spare_parts_df.to_excel(writer, sheet_name='Запчасти', index=False)
@@ -365,22 +385,17 @@ class ExportManager:
 
 # ==================== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====================
 class RepairERP:
-    """Главный класс приложения"""
-
     def __init__(self):
         self.export_manager = ExportManager()
         self.init_session_state()
 
     def migrate_work_days(self):
-        """Миграция данных рабочих дней - добавление колонок is_holiday, holiday_name, payment_multiplier"""
         if len(st.session_state.work_days) > 0:
-            # Проверяем, есть ли нужные колонки
             if 'is_holiday' not in st.session_state.work_days.columns:
                 st.session_state.work_days['is_holiday'] = False
                 st.session_state.work_days['holiday_name'] = ''
                 st.session_state.work_days['payment_multiplier'] = 1.0
 
-                # Обновляем существующие записи
                 for idx, row in st.session_state.work_days.iterrows():
                     try:
                         date = datetime.datetime.strptime(row['date'], '%Y-%m-%d').date()
@@ -392,11 +407,8 @@ class RepairERP:
                         pass
 
                 self.save_all()
-                st.info("✅ Данные рабочих дней обновлены (добавлена информация о праздниках)")
 
     def init_session_state(self):
-        """Инициализация session state"""
-        # Запчасти
         parts_file = DATA_FOLDER / 'spare_parts.parquet'
         if parts_file.exists():
             st.session_state.spare_parts = pd.read_parquet(parts_file)
@@ -409,7 +421,6 @@ class RepairERP:
                 {"name": "Контроллер 2G", "stock": 8, "min_stock": 5, "order_point": 6},
             ])
 
-        # Работы
         works_file = DATA_FOLDER / 'works.parquet'
         if works_file.exists():
             st.session_state.works = pd.read_parquet(works_file)
@@ -423,7 +434,6 @@ class RepairERP:
             ]
             st.session_state.works = pd.DataFrame({"name": works_list})
 
-        # Сотрудники
         employees_file = DATA_FOLDER / 'employees.parquet'
         if employees_file.exists():
             st.session_state.employees = pd.read_parquet(employees_file)
@@ -435,7 +445,6 @@ class RepairERP:
                 {"name": "Сергей Управляющий", "role": "Управляющий сервисом", "daily_rate": 10000, "can_elec": False},
             ])
 
-        # Ремонты
         repairs_file = DATA_FOLDER / 'repairs.parquet'
         if repairs_file.exists():
             st.session_state.repairs = pd.read_parquet(repairs_file)
@@ -446,7 +455,6 @@ class RepairERP:
                 'parts_cost', 'failure_reason', 'comment', 'tags'
             ])
 
-        # Рабочие дни
         workdays_file = DATA_FOLDER / 'work_days.parquet'
         if workdays_file.exists():
             st.session_state.work_days = pd.read_parquet(workdays_file)
@@ -455,10 +463,17 @@ class RepairERP:
                 'date', 'employee', 'hours_worked', 'repair_ids', 'is_holiday', 'holiday_name', 'payment_multiplier'
             ])
 
-        # Миграция данных (добавление колонок для существующих данных)
+        # История движений
+        movement_file = DATA_FOLDER / 'parts_movement.parquet'
+        if movement_file.exists():
+            st.session_state.parts_movement = pd.read_parquet(movement_file)
+        else:
+            st.session_state.parts_movement = pd.DataFrame(columns=[
+                'date', 'part_name', 'change', 'new_stock', 'type', 'repair_id', 'comment'
+            ])
+
         self.migrate_work_days()
 
-        # Для отслеживания состояния
         if 'edit_mode' not in st.session_state:
             st.session_state.edit_mode = {}
         if 'selected_calendar_date' not in st.session_state:
@@ -467,20 +482,19 @@ class RepairERP:
             st.session_state.edit_history_repair = None
 
     def save_all(self):
-        """Сохранение всех данных"""
         try:
             st.session_state.spare_parts.to_parquet(DATA_FOLDER / 'spare_parts.parquet', index=False)
             st.session_state.works.to_parquet(DATA_FOLDER / 'works.parquet', index=False)
             st.session_state.employees.to_parquet(DATA_FOLDER / 'employees.parquet', index=False)
             st.session_state.repairs.to_parquet(DATA_FOLDER / 'repairs.parquet', index=False)
             st.session_state.work_days.to_parquet(DATA_FOLDER / 'work_days.parquet', index=False)
+            st.session_state.parts_movement.to_parquet(DATA_FOLDER / 'parts_movement.parquet', index=False)
             return True
         except Exception as e:
             st.error(f"Ошибка сохранения: {e}")
             return False
 
     def delete_repair(self, repair_id):
-        """Удаление ремонта"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -493,6 +507,8 @@ class RepairERP:
                             ].index
                         if len(part_idx) > 0:
                             st.session_state.spare_parts.loc[part_idx[0], 'stock'] += qty
+                            self.add_movement_record(part_name, qty, 'return', repair_id,
+                                                     f"Возврат из удаленного ремонта #{repair_id}")
 
                 st.session_state.repairs = st.session_state.repairs.drop(idx[0]).reset_index(drop=True)
                 self.save_all()
@@ -503,7 +519,6 @@ class RepairERP:
             return False
 
     def complete_repair(self, repair_id):
-        """Завершение ремонта"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -517,7 +532,6 @@ class RepairERP:
             return False
 
     def update_repair(self, repair_id, updated_data):
-        """Обновление ремонта"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -531,7 +545,6 @@ class RepairERP:
             return False
 
     def parse_parts_list(self, parts_str):
-        """Парсинг строки запчастей в список"""
         parts = []
         if parts_str and parts_str != '':
             for item in parts_str.split(','):
@@ -544,13 +557,115 @@ class RepairERP:
         return parts
 
     def format_parts_string(self, parts_list):
-        """Форматирование списка запчастей в строку"""
         if not parts_list:
             return ""
         return ", ".join([f"{name} x{qty}" for name, qty in parts_list])
 
+    def add_movement_record(self, part_name, change, type, repair_id, comment):
+        """Добавление записи в историю движений"""
+        current_stock = 0
+        part_idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == part_name].index
+        if len(part_idx) > 0:
+            current_stock = st.session_state.spare_parts.loc[part_idx[0], 'stock']
+
+        new_record = pd.DataFrame([{
+            'date': datetime.datetime.now().isoformat(),
+            'part_name': part_name,
+            'change': change,
+            'new_stock': current_stock,
+            'type': type,
+            'repair_id': repair_id if repair_id else '',
+            'comment': comment
+        }])
+        st.session_state.parts_movement = pd.concat([st.session_state.parts_movement, new_record], ignore_index=True)
+
+    def check_deficit_alerts(self):
+        """Проверка дефицита и создание уведомлений"""
+        if len(st.session_state.spare_parts) == 0:
+            return []
+
+        low_stock = st.session_state.spare_parts[
+            st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']]
+        alerts = []
+
+        for _, part in low_stock.iterrows():
+            deficit = part['order_point'] - part['stock']
+            if deficit > 0:
+                alerts.append({
+                    'part_name': part['name'],
+                    'current_stock': part['stock'],
+                    'order_point': part['order_point'],
+                    'deficit': deficit,
+                    'severity': 'critical' if part['stock'] == 0 else 'warning'
+                })
+
+        return alerts
+
+    def get_employee_load_stats(self):
+        """Статистика загрузки сотрудников"""
+        if len(st.session_state.employees) == 0 or len(st.session_state.work_days) == 0:
+            return []
+
+        stats = []
+        for _, emp in st.session_state.employees.iterrows():
+            emp_days = st.session_state.work_days[st.session_state.work_days['employee'] == emp['name']]
+            days_worked = len(emp_days)
+
+            emp_repairs = st.session_state.repairs[
+                st.session_state.repairs['employees'].str.contains(emp['name'], na=False)
+            ] if len(st.session_state.repairs) > 0 else pd.DataFrame()
+            repairs_count = len(emp_repairs)
+
+            # Загрузка в процентах (22 рабочих дня в месяце)
+            load_percent = min(100, (days_worked / 22) * 100)
+
+            status = "🟢 Норма"
+            if load_percent < 50 and days_worked > 0:
+                status = "🟡 Низкая загрузка"
+            elif load_percent > 100:
+                status = "🟠 Перегрузка"
+            elif days_worked == 0:
+                status = "🔴 Не работал"
+
+            stats.append({
+                'employee': emp['name'],
+                'role': emp['role'],
+                'days_worked': days_worked,
+                'repairs_count': repairs_count,
+                'load_percent': round(load_percent, 1),
+                'status': status
+            })
+
+        return stats
+
+    def get_seasonal_forecast(self):
+        """Прогноз сезонности"""
+        if len(st.session_state.repairs) == 0:
+            return None
+
+        repairs = st.session_state.repairs.copy()
+        repairs['date_dt'] = pd.to_datetime(repairs['date_receipt'])
+        repairs['month'] = repairs['date_dt'].dt.month
+
+        # Среднее по месяцам
+        monthly_avg = repairs.groupby('month').size().reset_index(name='avg_count')
+        monthly_avg['avg_count'] = monthly_avg['avg_count'] / repairs['date_dt'].dt.year.nunique()
+
+        # Прогноз на следующий месяц
+        current_month = datetime.date.today().month
+        next_month = current_month + 1 if current_month < 12 else 1
+
+        next_month_avg = monthly_avg[monthly_avg['month'] == next_month]['avg_count'].values
+        forecast = int(next_month_avg[0]) if len(next_month_avg) > 0 else 0
+
+        return {
+            'current_month_avg': int(monthly_avg[monthly_avg['month'] == current_month]['avg_count'].values[0]) if len(
+                monthly_avg[monthly_avg['month'] == current_month]) > 0 else 0,
+            'next_month_forecast': forecast,
+            'monthly_data': monthly_avg
+        }
+
     def add_work_to_repair(self, repair_id, new_work):
-        """Добавление работы к ремонту"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -570,7 +685,6 @@ class RepairERP:
             return False
 
     def remove_work_from_repair(self, repair_id, work_to_remove):
-        """Удаление работы из ремонта"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -588,7 +702,6 @@ class RepairERP:
             return False
 
     def add_part_to_repair(self, repair_id, part_name, quantity):
-        """Добавление запчасти к ремонту"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -608,7 +721,10 @@ class RepairERP:
 
                 part_idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == part_name].index
                 if len(part_idx) > 0:
+                    old_stock = st.session_state.spare_parts.loc[part_idx[0], 'stock']
                     st.session_state.spare_parts.loc[part_idx[0], 'stock'] -= quantity
+                    self.add_movement_record(part_name, -quantity, 'out', repair_id,
+                                             f"Использовано в ремонте #{repair_id}")
 
                 self.save_all()
                 return True
@@ -618,7 +734,6 @@ class RepairERP:
             return False
 
     def remove_part_from_repair(self, repair_id, part_name, quantity):
-        """Удаление запчасти из ремонта"""
         try:
             idx = st.session_state.repairs[st.session_state.repairs['id'] == repair_id].index
             if len(idx) > 0:
@@ -637,6 +752,7 @@ class RepairERP:
                 part_idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == part_name].index
                 if len(part_idx) > 0:
                     st.session_state.spare_parts.loc[part_idx[0], 'stock'] += quantity
+                    self.add_movement_record(part_name, quantity, 'in', repair_id, f"Возврат из ремонта #{repair_id}")
 
                 self.save_all()
                 return True
@@ -646,7 +762,6 @@ class RepairERP:
             return False
 
     def add_employee(self, name, role, daily_rate):
-        """Добавление сотрудника"""
         try:
             new_employee = pd.DataFrame([{
                 'name': name,
@@ -662,7 +777,6 @@ class RepairERP:
             return False
 
     def update_employee(self, old_name, new_name, role, daily_rate):
-        """Обновление данных сотрудника"""
         try:
             idx = st.session_state.employees[st.session_state.employees['name'] == old_name].index
             if len(idx) > 0:
@@ -678,7 +792,6 @@ class RepairERP:
             return False
 
     def delete_employee(self, employee_name):
-        """Удаление сотрудника"""
         try:
             st.session_state.employees = st.session_state.employees[
                 st.session_state.employees['name'] != employee_name
@@ -689,9 +802,8 @@ class RepairERP:
             st.error(f"Ошибка удаления: {e}")
             return False
 
-    def add_repair(self, gos_number, repair_type, priority, employees, failure_reason,
-                   works, parts, comment, tags):
-        """Добавление нового ремонта"""
+    def add_repair(self, gos_number, repair_type, employees,
+                   failure_reason, works, parts, comment, tags):
         try:
             new_id = len(st.session_state.repairs) + 1
 
@@ -707,7 +819,7 @@ class RepairERP:
                 'date_completion': '',
                 'status': 'В работе',
                 'repair_type': repair_type,
-                'priority': priority,
+                'priority': '',
                 'employees': employees_str,
                 'works': works_str,
                 'parts': parts_str,
@@ -726,6 +838,8 @@ class RepairERP:
                         ].index
                     if len(idx) > 0:
                         st.session_state.spare_parts.loc[idx[0], 'stock'] -= quantity
+                        self.add_movement_record(part_name, -quantity, 'out', new_id,
+                                                 f"Использовано в ремонте #{new_id}")
 
             self.save_all()
             return True
@@ -734,7 +848,6 @@ class RepairERP:
             return False
 
     def add_work_day(self, date, employee, hours_worked=8, repair_ids=""):
-        """Добавление отработанного дня с учетом праздников"""
         try:
             existing = st.session_state.work_days[
                 (st.session_state.work_days['date'] == date.isoformat()) &
@@ -743,7 +856,6 @@ class RepairERP:
             if len(existing) > 0:
                 return False, "Сотрудник уже отметился за этот день"
 
-            # Получаем информацию о дне
             work_info = get_workday_info(date)
             is_holiday_flag = work_info['is_holiday']
             holiday_name = work_info['holiday_name']
@@ -769,7 +881,6 @@ class RepairERP:
             return False, str(e)
 
     def delete_work_day(self, work_day_index):
-        """Удаление отработанного дня"""
         try:
             st.session_state.work_days = st.session_state.work_days.drop(work_day_index).reset_index(drop=True)
             self.save_all()
@@ -779,7 +890,6 @@ class RepairERP:
             return False
 
     def get_parts_forecast(self, target_repairs=200):
-        """Прогноз закупок запчастей на основе реального использования"""
         if len(st.session_state.repairs) == 0:
             return pd.DataFrame()
 
@@ -832,7 +942,6 @@ class RepairERP:
         return forecast_df
 
     def get_monthly_forecast(self):
-        """Прогноз на месяц на основе реальной статистики"""
         if len(st.session_state.repairs) == 0:
             return pd.DataFrame()
 
@@ -886,26 +995,76 @@ class RepairERP:
 
         return pd.DataFrame(forecast_data)
 
-    # ==================== МЕТОД ДЛЯ УПРАВЛЕНИЯ РАБОТАМИ ====================
-    def show_works_management_simple(self):
-        """Управление списком работ (упрощенная версия)"""
-        st.header("🔧 Управление списком работ")
+    def calculate_employee_rating(self, repairs_df, work_days_df):
+        """Расчет рейтинга сотрудников"""
+        if len(st.session_state.employees) == 0:
+            return pd.DataFrame()
 
-        tab1, tab2 = st.tabs(["📋 Список работ", "➕ Добавить/Удалить"])
+        ratings = []
+        for _, emp in st.session_state.employees.iterrows():
+            emp_repairs = repairs_df[repairs_df['employees'].str.contains(emp['name'], na=False)] if len(
+                repairs_df) > 0 else pd.DataFrame()
+            emp_days = work_days_df[work_days_df['employee'] == emp['name']] if len(
+                work_days_df) > 0 else pd.DataFrame()
+
+            repairs_count = len(emp_repairs)
+            days_worked = len(emp_days)
+            completed = len(emp_repairs[emp_repairs['status'] == 'Завершен']) if len(emp_repairs) > 0 else 0
+
+            productivity = repairs_count / days_worked if days_worked > 0 else 0
+            completion_rate = (completed / repairs_count * 100) if repairs_count > 0 else 0
+
+            productivity_score = min(productivity * 20, 40)
+            completion_score = completion_rate * 0.4
+            volume_score = min(repairs_count * 2, 20)
+
+            total_rating = productivity_score + completion_score + volume_score
+
+            if total_rating >= 85:
+                level = "Эксперт"
+                medal = "🥇"
+            elif total_rating >= 70:
+                level = "Профессионал"
+                medal = "🥈"
+            elif total_rating >= 50:
+                level = "Стажёр"
+                medal = "🥉"
+            else:
+                level = "Новичок"
+                medal = "📈"
+
+            ratings.append({
+                'Сотрудник': emp['name'],
+                'Роль': emp['role'],
+                'Ремонтов': repairs_count,
+                'Завершено': completed,
+                'Производительность': round(productivity, 2),
+                'Завершение %': round(completion_rate, 1),
+                'Рейтинг': round(total_rating, 1),
+                'Уровень': f"{medal} {level}"
+            })
+
+        return pd.DataFrame(ratings).sort_values('Рейтинг', ascending=False)
+
+    def show_works_management_simple(self):
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Управление списком работ")
+
+        tab1, tab2 = st.tabs(["Список работ", "Добавить/Удалить"])
 
         with tab1:
-            st.subheader("📋 Список всех работ")
-            search = st.text_input("🔍 Поиск", placeholder="Введите название...")
+            st.subheader("Список всех работ")
+            search = st.text_input("Поиск", placeholder="Введите название...")
             df = st.session_state.works.copy()
             if search:
                 df = df[df['name'].str.contains(search, case=False)]
             st.dataframe(df, use_container_width=True)
-            st.info(f"📊 Всего работ: {len(st.session_state.works)}")
+            st.info(f"Всего работ: {len(st.session_state.works)}")
 
         with tab2:
-            st.subheader("➕ Добавить новую работу")
+            st.subheader("Добавить новую работу")
             new_work = st.text_input("Название работы", key="new_work_simple")
-            if st.button("➕ Добавить", key="add_work_simple"):
+            if st.button("Добавить", key="add_work_simple", use_container_width=True):
                 if new_work and new_work.strip():
                     if new_work in st.session_state.works['name'].values:
                         st.error("Такая работа уже существует!")
@@ -913,16 +1072,16 @@ class RepairERP:
                         new_row = pd.DataFrame([{'name': new_work}])
                         st.session_state.works = pd.concat([st.session_state.works, new_row], ignore_index=True)
                         self.save_all()
-                        st.success(f"✅ Работа '{new_work}' добавлена!")
+                        st.success(f"Работа '{new_work}' добавлена!")
                         st.rerun()
                 else:
                     st.error("Введите название работы!")
 
             st.markdown("---")
-            st.subheader("🗑️ Удалить работу")
+            st.subheader("Удалить работу")
             work_to_delete = st.selectbox("Выберите работу для удаления", st.session_state.works['name'].tolist(),
                                           key="delete_work_simple")
-            if st.button("🗑️ Удалить", key="delete_work_simple_btn"):
+            if st.button("Удалить", key="delete_work_simple_btn", use_container_width=True):
                 used = False
                 if len(st.session_state.repairs) > 0:
                     for _, repair in st.session_state.repairs.iterrows():
@@ -930,58 +1089,59 @@ class RepairERP:
                             used = True
                             break
                 if used:
-                    st.error(f"❌ Работа '{work_to_delete}' используется в ремонтах и не может быть удалена!")
+                    st.error(f"Работа '{work_to_delete}' используется в ремонтах и не может быть удалена!")
                 else:
                     st.session_state.works = st.session_state.works[
                         st.session_state.works['name'] != work_to_delete].reset_index(drop=True)
                     self.save_all()
-                    st.success(f"✅ Работа '{work_to_delete}' удалена!")
+                    st.success(f"Работа '{work_to_delete}' удалена!")
                     st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    def run(self):
-        """Запуск приложения"""
-        st.markdown("""
-        <div class="main-header">
-            <h1>🔧 ERP Ремонтный цех PRO</h1>
-            <p>Управление ремонтами электровелосипедов</p>
-        </div>
-        """, unsafe_allow_html=True)
+    def show_notifications(self):
+        """Отображение уведомлений"""
+        st.markdown("---")
+        st.markdown("### 🔔 Уведомления")
 
-        menu = st.sidebar.radio(
-            "📌 Навигация",
-            ["📊 Дашборд", "🔧 Ремонты", "👥 Сотрудники", "📦 Склад",
-             "🔨 Работы", "📈 Аналитика", "📑 Отчеты", "📅 Отработанные дни", "🏆 KPI сотрудников", "⚙️ Настройки"]
-        )
+        # Уведомления о дефиците запчастей
+        deficit_alerts = self.check_deficit_alerts()
+        if deficit_alerts:
+            st.warning(f"⚠️ **Дефицит запчастей:** {len(deficit_alerts)} позиций требуют пополнения!")
+            for alert in deficit_alerts[:3]:
+                if alert['severity'] == 'critical':
+                    st.error(
+                        f"🔴 КРИТИЧЕСКИЙ ДЕФИЦИТ: {alert['part_name']} - остаток {alert['current_stock']} шт., требуется {alert['deficit']} шт.!")
+                else:
+                    st.warning(
+                        f"🟡 ВНИМАНИЕ: {alert['part_name']} - остаток {alert['current_stock']} шт., точка заказа {alert['order_point']} шт.")
+        else:
+            st.success("✅ Все запчасти в достаточном количестве")
 
-        st.sidebar.markdown("---")
-        if st.sidebar.button("💾 Сохранить все данные", use_container_width=True):
-            if self.save_all():
-                st.sidebar.success("✅ Данные сохранены!")
+        # Уведомления о загрузке сотрудников
+        employee_stats = self.get_employee_load_stats()
+        if employee_stats:
+            low_load = [e for e in employee_stats if e['status'] != '🟢 Норма' and e['days_worked'] > 0]
+            not_worked = [e for e in employee_stats if e['days_worked'] == 0]
 
-        if menu == "📊 Дашборд":
-            self.show_dashboard()
-        elif menu == "🔧 Ремонты":
-            self.show_repairs()
-        elif menu == "👥 Сотрудники":
-            self.show_employees()
-        elif menu == "📦 Склад":
-            self.show_warehouse()
-        elif menu == "🔨 Работы":
-            self.show_works_management_simple()
-        elif menu == "📈 Аналитика":
-            self.show_analytics()
-        elif menu == "📑 Отчеты":
-            self.show_reports()
-        elif menu == "📅 Отработанные дни":
-            self.show_work_days()
-        elif menu == "🏆 KPI сотрудников":
-            self.show_employee_kpi()
-        elif menu == "⚙️ Настройки":
-            self.show_settings()
+            if low_load:
+                st.info(f"📊 **Загрузка сотрудников:** {len(low_load)} сотрудников с отклонениями")
+                for emp in low_load[:3]:
+                    st.write(f"  {emp['employee']}: {emp['load_percent']}% загрузки ({emp['status']})")
+
+            if not_worked:
+                st.warning(f"👥 **Не работали:** {len(not_worked)} сотрудников не отметили смены")
+
+        # Уведомления о прогнозе
+        seasonal_forecast = self.get_seasonal_forecast()
+        if seasonal_forecast:
+            st.info(
+                f"📈 **Прогноз на следующий месяц:** {seasonal_forecast['next_month_forecast']} ремонтов (среднее в текущем: {seasonal_forecast['current_month_avg']})")
 
     def show_dashboard(self):
-        """Дашборд с расширенной статистикой"""
-        st.header("📊 Дашборд")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+
+        # Показываем уведомления
+        self.show_notifications()
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1009,55 +1169,71 @@ class RepairERP:
         else:
             period_days = pd.DataFrame()
 
+        st.markdown("### Ключевые показатели")
+
         col1, col2, col3, col4 = st.columns(4)
+
         with col1:
-            st.metric("📦 Запчастей", len(st.session_state.spare_parts))
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #e0e7ff; color: #4f46e5;">📦</div>
+                <div class="metric-value">{len(st.session_state.spare_parts)}</div>
+                <div class="metric-label">Запчастей на складе</div>
+            </div>
+            """, unsafe_allow_html=True)
+
         with col2:
-            st.metric("👥 Сотрудников", len(st.session_state.employees))
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #d1fae5; color: #10b981;">👥</div>
+                <div class="metric-value">{len(st.session_state.employees)}</div>
+                <div class="metric-label">Сотрудников</div>
+            </div>
+            """, unsafe_allow_html=True)
+
         with col3:
             total_repairs = len(period_repairs)
-            st.metric("🔧 Всего ремонтов", total_repairs)
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #fed7aa; color: #f59e0b;">🔧</div>
+                <div class="metric-value">{total_repairs}</div>
+                <div class="metric-label">Всего ремонтов</div>
+            </div>
+            """, unsafe_allow_html=True)
+
         with col4:
             completed = len(period_repairs[period_repairs['status'] == 'Завершен']) if len(period_repairs) > 0 else 0
-            st.metric("✅ Завершено", completed)
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #d1fae5; color: #10b981;">✅</div>
+                <div class="metric-value">{completed}</div>
+                <div class="metric-label">Завершено</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("---")
-        st.subheader("📊 Ключевые показатели")
 
         if len(period_repairs) > 0:
-            completed_repairs = period_repairs[period_repairs['status'] == 'Завершен']
-            avg_time = 0
-            if len(completed_repairs) > 0:
-                times = []
-                for _, repair in completed_repairs.iterrows():
-                    if repair['date_completion']:
-                        start = datetime.datetime.strptime(repair['date_receipt'], '%Y-%m-%d')
-                        end = datetime.datetime.strptime(repair['date_completion'], '%Y-%m-%d')
-                        times.append((end - start).days)
-                avg_time = sum(times) / len(times) if times else 0
+            col1, col2 = st.columns(2)
 
-            urgent = len(period_repairs[period_repairs['priority'] == 'Высокий'])
-            urgent_pct = (urgent / len(period_repairs)) * 100
-
-            duplicate_gos = period_repairs['gos_number'].value_counts()
-            repeat = len(duplicate_gos[duplicate_gos > 1])
-            repeat_pct = (repeat / len(period_repairs['gos_number'].unique())) * 100 if len(period_repairs) > 0 else 0
-
-            deficit = len(st.session_state.spare_parts[
-                              st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
-                              ])
-
-            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("⏱️ Среднее время ремонта", f"{avg_time:.1f} дн.")
+                type_counts = period_repairs['repair_type'].value_counts()
+                if len(type_counts) > 0:
+                    fig = px.pie(
+                        values=type_counts.values,
+                        names=type_counts.index,
+                        title="Распределение по типам ремонта",
+                        color_discrete_sequence=px.colors.qualitative.Set3,
+                        hole=0.4
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+
             with col2:
-                st.metric("🚨 Срочных ремонтов", f"{urgent_pct:.0f}%")
-            with col3:
-                st.metric("🔄 Повторных обращений", f"{repeat_pct:.0f}%")
-            with col4:
-                st.metric("📦 Дефицит запчастей", deficit)
+                # Удален график приоритетов, так как приоритет удален
+                st.info("Выберите период для отображения статистики")
         else:
-            st.info("Нет данных для отображения KPI")
+            st.info("Нет данных для отображения за выбранный период")
 
         st.markdown("---")
         if len(st.session_state.spare_parts) > 0:
@@ -1065,16 +1241,18 @@ class RepairERP:
                 st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
                 ]
             if len(low_stock) > 0:
-                st.warning(f"⚠️ Внимание! {len(low_stock)} запчастей требуют пополнения:")
+                st.warning(f"Внимание! {len(low_stock)} запчастей требуют пополнения:")
                 st.dataframe(low_stock[['name', 'stock', 'min_stock', 'order_point']], use_container_width=True)
             else:
-                st.success("✅ Все запчасти в достаточном количестве")
+                st.success("Все запчасти в достаточном количестве")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     def show_repairs(self):
-        """Управление ремонтами"""
-        st.header("🔧 Управление ремонтами")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Управление ремонтами")
 
-        tab1, tab2, tab3 = st.tabs(["➕ Новый ремонт", "📋 Активные ремонты", "📜 История"])
+        tab1, tab2, tab3 = st.tabs(["Новый ремонт", "Активные ремонты", "История"])
 
         with tab1:
             with st.form("new_repair_form", clear_on_submit=True):
@@ -1083,20 +1261,18 @@ class RepairERP:
                 with col1:
                     gos_number = st.text_input("Госномер *", placeholder="РА201С")
                     repair_type = st.selectbox("Тип ремонта",
-                                               ["Закрытие аренды", "ТО", "Механическое повреждение", "Клиентский"])
-                    priority = st.selectbox("Приоритет", ["Высокий", "Средний", "Низкий"])
+                                               ["Закрытие аренды", "ТО", "Механическое повреждение"])
                     employees = st.multiselect("Исполнители *", st.session_state.employees['name'].tolist())
-                    tags = st.multiselect("Теги", ["Клиентский", "Закрытие", "Срочный", "Гарантийный"])
+                    tags = st.multiselect("Теги", ["Закрытие", "Срочный", "Гарантийный"])
 
                 with col2:
                     failure_reason = st.selectbox("Причина",
-                                                  ["Падение", "Износ", "Брак", "ДТП", "Закрытие аренды",
-                                                   "По вине клиента"])
+                                                  ["Износ", "Брак", "Закрытие аренды", "По вине клиента"])
                     works_options = st.session_state.works['name'].tolist()
                     works = st.multiselect("Выполняемые работы", works_options)
                     comment = st.text_area("Комментарий", height=100)
 
-                st.subheader("🔩 Запчасти")
+                st.subheader("Запчасти")
                 parts_options = st.session_state.spare_parts['name'].tolist()
                 num_parts = st.number_input("Количество запчастей", 0, 10, 0, key="num_parts")
 
@@ -1111,7 +1287,7 @@ class RepairERP:
                         parts.append((part, qty))
 
                 st.caption("* - обязательные поля")
-                submitted = st.form_submit_button("📥 Принять в ремонт", use_container_width=True)
+                submitted = st.form_submit_button("Принять в ремонт", use_container_width=True)
 
                 if submitted:
                     if not gos_number:
@@ -1119,15 +1295,15 @@ class RepairERP:
                     elif not employees:
                         st.error("Выберите исполнителей!")
                     else:
-                        if self.add_repair(gos_number, repair_type, priority, employees,
+                        if self.add_repair(gos_number, repair_type, employees,
                                            failure_reason, works, parts, comment, tags):
-                            st.success("✅ Ремонт успешно создан!")
+                            st.success("Ремонт успешно создан!")
                             st.rerun()
                         else:
                             st.error("Ошибка при создании ремонта!")
 
         with tab2:
-            st.subheader("📋 Активные ремонты")
+            st.subheader("Активные ремонты")
 
             if len(st.session_state.repairs) > 0:
                 active = st.session_state.repairs[
@@ -1145,12 +1321,11 @@ class RepairERP:
                         if f"add_part_{repair_id}" not in st.session_state:
                             st.session_state[f"add_part_{repair_id}"] = False
 
-                        with st.expander(f"🚲 {repair['gos_number']} - {repair['repair_type']} (ID: {repair['id']})"):
+                        with st.expander(f"{repair['gos_number']} - {repair['repair_type']} (ID: {repair['id']})"):
 
                             if not st.session_state[f"edit_{repair_id}"]:
                                 col1, col2, col3 = st.columns(3)
                                 with col1:
-                                    st.write(f"**Приоритет:** {repair['priority']}")
                                     st.write(f"**Статус:** {repair['status']}")
                                 with col2:
                                     st.write(f"**Исполнители:** {repair['employees']}")
@@ -1160,44 +1335,46 @@ class RepairERP:
                                     st.write(f"**Теги:** {repair.get('tags', '—')}")
 
                                 st.markdown("---")
-                                st.subheader("🔧 Выполняемые работы")
+                                st.subheader("Выполняемые работы")
                                 if repair['works'] and repair['works'] != '':
                                     works_list = [w.strip() for w in repair['works'].split(',') if w.strip()]
                                     for work in works_list:
                                         col1, col2 = st.columns([4, 1])
                                         with col1:
-                                            st.write(f"• {work}")
+                                            st.write(f"- {work}")
                                         with col2:
-                                            if st.button(f"🗑️", key=f"remove_work_{repair_id}_{work}"):
+                                            if st.button(f"Удалить", key=f"remove_work_{repair_id}_{work}"):
                                                 if self.remove_work_from_repair(repair_id, work):
                                                     st.success(f"Работа '{work}' удалена!")
                                                     st.rerun()
                                 else:
                                     st.write("Нет добавленных работ")
 
-                                if st.button(f"➕ Добавить работу", key=f"add_work_btn_{repair_id}"):
+                                if st.button(f"Добавить работу", key=f"add_work_btn_{repair_id}",
+                                             use_container_width=True):
                                     st.session_state[f"add_work_{repair_id}"] = True
                                     st.rerun()
 
                                 st.markdown("---")
-                                st.subheader("🔩 Используемые запчасти")
+                                st.subheader("Используемые запчасти")
                                 if repair['parts'] and repair['parts'] != '':
                                     parts_list = self.parse_parts_list(repair['parts'])
                                     for part_name, qty in parts_list:
                                         col1, col2, col3 = st.columns([3, 1, 1])
                                         with col1:
-                                            st.write(f"• {part_name}")
+                                            st.write(f"- {part_name}")
                                         with col2:
                                             st.write(f"x{qty}")
                                         with col3:
-                                            if st.button(f"🗑️", key=f"remove_part_{repair_id}_{part_name}"):
+                                            if st.button(f"Удалить", key=f"remove_part_{repair_id}_{part_name}"):
                                                 if self.remove_part_from_repair(repair_id, part_name, qty):
                                                     st.success(f"Запчасть '{part_name}' удалена!")
                                                     st.rerun()
                                 else:
                                     st.write("Нет добавленных запчастей")
 
-                                if st.button(f"➕ Добавить запчасть", key=f"add_part_btn_{repair_id}"):
+                                if st.button(f"Добавить запчасть", key=f"add_part_btn_{repair_id}",
+                                             use_container_width=True):
                                     st.session_state[f"add_part_{repair_id}"] = True
                                     st.rerun()
 
@@ -1206,28 +1383,28 @@ class RepairERP:
                                     st.info(f"**Комментарий:** {repair['comment']}")
 
                                 st.markdown("---")
-                                col1, col2, col3, col4 = st.columns(4)
+                                col1, col2, col3 = st.columns(3)
 
                                 with col1:
-                                    if st.button(f"✏️ Редактировать", key=f"edit_btn_{repair_id}",
+                                    if st.button(f"Редактировать", key=f"edit_btn_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"edit_{repair_id}"] = True
                                         st.rerun()
 
                                 with col2:
-                                    if st.button(f"✅ Завершить", key=f"complete_{repair_id}", use_container_width=True):
+                                    if st.button(f"Завершить", key=f"complete_{repair_id}", use_container_width=True):
                                         if self.complete_repair(repair_id):
                                             st.success("Ремонт завершен!")
                                             st.rerun()
 
                                 with col3:
-                                    if st.button(f"🗑️ Удалить", key=f"delete_{repair_id}", use_container_width=True):
+                                    if st.button(f"Удалить", key=f"delete_{repair_id}", use_container_width=True):
                                         if self.delete_repair(repair_id):
                                             st.success("Ремонт удален!")
                                             st.rerun()
 
                             elif st.session_state[f"add_work_{repair_id}"]:
-                                st.subheader("➕ Добавление работы")
+                                st.subheader("Добавление работы")
 
                                 works_options = st.session_state.works['name'].tolist()
                                 new_work = st.selectbox("Выберите работу", works_options,
@@ -1235,20 +1412,20 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("✅ Добавить", key=f"confirm_add_work_{repair_id}",
+                                    if st.button("Добавить", key=f"confirm_add_work_{repair_id}",
                                                  use_container_width=True):
                                         if self.add_work_to_repair(repair_id, new_work):
                                             st.success(f"Работа '{new_work}' добавлена!")
                                             st.session_state[f"add_work_{repair_id}"] = False
                                             st.rerun()
                                 with col2:
-                                    if st.button("❌ Отмена", key=f"cancel_add_work_{repair_id}",
+                                    if st.button("Отмена", key=f"cancel_add_work_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"add_work_{repair_id}"] = False
                                         st.rerun()
 
                             elif st.session_state[f"add_part_{repair_id}"]:
-                                st.subheader("➕ Добавление запчасти")
+                                st.subheader("Добавление запчасти")
 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -1260,7 +1437,7 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("✅ Добавить", key=f"confirm_add_part_{repair_id}",
+                                    if st.button("Добавить", key=f"confirm_add_part_{repair_id}",
                                                  use_container_width=True):
                                         part_stock = st.session_state.spare_parts[
                                             st.session_state.spare_parts['name'] == new_part
@@ -1274,29 +1451,25 @@ class RepairERP:
                                         else:
                                             st.error(f"Недостаточно запчастей! На складе: {part_stock} шт.")
                                 with col2:
-                                    if st.button("❌ Отмена", key=f"cancel_add_part_{repair_id}",
+                                    if st.button("Отмена", key=f"cancel_add_part_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"add_part_{repair_id}"] = False
                                         st.rerun()
 
                             else:
-                                st.subheader("✏️ Редактирование ремонта")
+                                st.subheader("Редактирование ремонта")
 
                                 col1, col2 = st.columns(2)
                                 with col1:
                                     new_gos_number = st.text_input("Госномер", value=repair['gos_number'],
                                                                    key=f"edit_gos_{repair_id}")
                                     new_repair_type = st.selectbox("Тип ремонта",
-                                                                   ["Закрытие аренды", "ТО", "Механическое повреждение",
-                                                                    "Клиентский"],
+                                                                   ["Закрытие аренды", "ТО",
+                                                                    "Механическое повреждение"],
                                                                    index=["Закрытие аренды", "ТО",
-                                                                          "Механическое повреждение",
-                                                                          "Клиентский"].index(repair['repair_type']),
+                                                                          "Механическое повреждение"].index(
+                                                                       repair['repair_type']),
                                                                    key=f"edit_type_{repair_id}")
-                                    new_priority = st.selectbox("Приоритет", ["Высокий", "Средний", "Низкий"],
-                                                                index=["Высокий", "Средний", "Низкий"].index(
-                                                                    repair['priority']),
-                                                                key=f"edit_priority_{repair_id}")
 
                                 with col2:
                                     employees_list = st.session_state.employees['name'].tolist()
@@ -1308,15 +1481,15 @@ class RepairERP:
                                                                    key=f"edit_employees_{repair_id}")
 
                                     new_failure_reason = st.selectbox("Причина",
-                                                                      ["Падение", "Износ", "Брак", "ДТП",
-                                                                       "Закрытие аренды", "По вине клиента"],
-                                                                      index=["Падение", "Износ", "Брак", "ДТП",
+                                                                      ["Износ", "Брак", "Закрытие аренды",
+                                                                       "По вине клиента"],
+                                                                      index=["Износ", "Брак",
                                                                              "Закрытие аренды",
                                                                              "По вине клиента"].index(
                                                                           repair['failure_reason']),
                                                                       key=f"edit_reason_{repair_id}")
 
-                                tags_options = ["Клиентский", "Закрытие", "Срочный", "Гарантийный"]
+                                tags_options = ["Закрытие", "Срочный", "Гарантийный"]
                                 current_tags = [t.strip() for t in repair.get('tags', '').split(',')] if repair.get(
                                     'tags') else []
                                 new_tags = st.multiselect("Теги", tags_options,
@@ -1328,7 +1501,7 @@ class RepairERP:
                                                            key=f"edit_comment_{repair_id}")
 
                                 st.markdown("---")
-                                st.subheader("🔧 Работы")
+                                st.subheader("Работы")
 
                                 current_works = [w.strip() for w in repair['works'].split(',')] if repair[
                                     'works'] else []
@@ -1338,17 +1511,18 @@ class RepairERP:
                                                               key=f"edit_works_{repair_id}")
 
                                 st.markdown("---")
-                                st.subheader("🔩 Запчасти")
+                                st.subheader("Запчасти")
 
                                 current_parts = self.parse_parts_list(repair['parts'])
                                 st.write("**Текущие запчасти:**")
                                 if current_parts:
                                     for part_name, qty in current_parts:
-                                        st.write(f"• {part_name} x{qty}")
+                                        st.write(f"- {part_name} x{qty}")
                                 else:
                                     st.write("Нет запчастей")
 
                                 st.write("**Редактирование запчастей:**")
+                                parts_options = st.session_state.spare_parts['name'].tolist()
                                 num_edit_parts = st.number_input("Количество позиций запчастей", 0, 20,
                                                                  value=len(current_parts) if current_parts else 1,
                                                                  key=f"num_edit_parts_{repair_id}")
@@ -1377,12 +1551,11 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("💾 Сохранить изменения", key=f"save_edit_{repair_id}",
+                                    if st.button("Сохранить изменения", key=f"save_edit_{repair_id}",
                                                  use_container_width=True):
                                         updated_data = {
                                             'gos_number': new_gos_number,
                                             'repair_type': new_repair_type,
-                                            'priority': new_priority,
                                             'employees': ", ".join(new_employees),
                                             'failure_reason': new_failure_reason,
                                             'tags': ", ".join(new_tags),
@@ -1425,7 +1598,7 @@ class RepairERP:
                                             st.rerun()
 
                                 with col2:
-                                    if st.button("❌ Отмена", key=f"cancel_edit_{repair_id}", use_container_width=True):
+                                    if st.button("Отмена", key=f"cancel_edit_{repair_id}", use_container_width=True):
                                         st.session_state[f"edit_{repair_id}"] = False
                                         st.rerun()
                 else:
@@ -1434,9 +1607,9 @@ class RepairERP:
                 st.info("Нет данных о ремонтах")
 
         with tab3:
-            st.subheader("📜 История завершенных ремонтов")
+            st.subheader("История завершенных ремонтов")
 
-            search_gos = st.text_input("🔍 Фильтр по госномеру", placeholder="Введите номер...")
+            search_gos = st.text_input("Фильтр по госномеру", placeholder="Введите номер...")
 
             if len(st.session_state.repairs) > 0:
                 completed = st.session_state.repairs[
@@ -1463,9 +1636,9 @@ class RepairERP:
                                 col2.write(f"**Исполнители:** {repair['employees']}")
 
                                 if repair['works']:
-                                    st.write(f"**🔧 Выполненные работы:** {repair['works']}")
+                                    st.write(f"**Выполненные работы:** {repair['works']}")
                                 if repair['parts']:
-                                    st.write(f"**🔩 Запчасти:** {repair['parts']}")
+                                    st.write(f"**Запчасти:** {repair['parts']}")
                                 if repair['comment']:
                                     st.info(f"**Комментарий:** {repair['comment']}")
 
@@ -1473,13 +1646,13 @@ class RepairERP:
                                 col1, col2, col3 = st.columns(3)
 
                                 with col1:
-                                    if st.button(f"✏️ Редактировать", key=f"history_edit_btn_{repair_id}",
+                                    if st.button(f"Редактировать", key=f"history_edit_btn_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"history_edit_{repair_id}"] = True
                                         st.rerun()
 
                                 with col2:
-                                    if st.button(f"🔄 Вернуть в работу", key=f"history_reopen_{repair_id}",
+                                    if st.button(f"Вернуть в работу", key=f"history_reopen_{repair_id}",
                                                  use_container_width=True):
                                         idx_repair = st.session_state.repairs[
                                             st.session_state.repairs['id'] == repair_id].index
@@ -1487,18 +1660,18 @@ class RepairERP:
                                             st.session_state.repairs.loc[idx_repair[0], 'status'] = 'В работе'
                                             st.session_state.repairs.loc[idx_repair[0], 'date_completion'] = ''
                                             self.save_all()
-                                            st.success("✅ Ремонт возвращен в работу!")
+                                            st.success("Ремонт возвращен в работу!")
                                             st.rerun()
 
                                 with col3:
-                                    if st.button(f"🗑️ Удалить", key=f"history_delete_{repair_id}",
+                                    if st.button(f"Удалить", key=f"history_delete_{repair_id}",
                                                  use_container_width=True):
                                         if self.delete_repair(repair_id):
                                             st.success("Ремонт удален из истории!")
                                             st.rerun()
 
                             else:
-                                st.subheader("✏️ Редактирование завершенного ремонта")
+                                st.subheader("Редактирование завершенного ремонта")
 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -1506,16 +1679,10 @@ class RepairERP:
                                                              key=f"history_edit_gos_{repair_id}")
                                     edit_repair_type = st.selectbox(
                                         "Тип ремонта",
-                                        ["Закрытие аренды", "ТО", "Механическое повреждение", "Клиентский"],
-                                        index=["Закрытие аренды", "ТО", "Механическое повреждение", "Клиентский"].index(
+                                        ["Закрытие аренды", "ТО", "Механическое повреждение"],
+                                        index=["Закрытие аренды", "ТО", "Механическое повреждение"].index(
                                             repair['repair_type']),
                                         key=f"history_edit_type_{repair_id}"
-                                    )
-                                    edit_priority = st.selectbox(
-                                        "Приоритет",
-                                        ["Высокий", "Средний", "Низкий"],
-                                        index=["Высокий", "Средний", "Низкий"].index(repair['priority']),
-                                        key=f"history_edit_priority_{repair_id}"
                                     )
 
                                 with col2:
@@ -1530,13 +1697,13 @@ class RepairERP:
                                     )
                                     edit_failure_reason = st.selectbox(
                                         "Причина",
-                                        ["Падение", "Износ", "Брак", "ДТП", "Закрытие аренды", "По вине клиента"],
-                                        index=["Падение", "Износ", "Брак", "ДТП", "Закрытие аренды",
-                                               "По вине клиента"].index(repair['failure_reason']),
+                                        ["Износ", "Брак", "Закрытие аренды", "По вине клиента"],
+                                        index=["Износ", "Брак", "Закрытие аренды", "По вине клиента"].index(
+                                            repair['failure_reason']),
                                         key=f"history_edit_reason_{repair_id}"
                                     )
 
-                                tags_options = ["Клиентский", "Закрытие", "Срочный", "Гарантийный"]
+                                tags_options = ["Закрытие", "Срочный", "Гарантийный"]
                                 current_tags = [t.strip() for t in repair.get('tags', '').split(',')] if repair.get(
                                     'tags') else []
                                 edit_tags = st.multiselect(
@@ -1553,7 +1720,7 @@ class RepairERP:
                                 )
 
                                 st.markdown("---")
-                                st.subheader("🔧 Работы")
+                                st.subheader("Работы")
 
                                 current_works = [w.strip() for w in repair['works'].split(',')] if repair[
                                     'works'] else []
@@ -1566,13 +1733,13 @@ class RepairERP:
                                 )
 
                                 st.markdown("---")
-                                st.subheader("🔩 Запчасти")
+                                st.subheader("Запчасти")
 
                                 current_parts = self.parse_parts_list(repair['parts'])
                                 st.write("**Текущие запчасти:**")
                                 if current_parts:
                                     for part_name, qty in current_parts:
-                                        st.write(f"• {part_name} x{qty}")
+                                        st.write(f"- {part_name} x{qty}")
                                 else:
                                     st.write("Нет запчастей")
 
@@ -1617,12 +1784,11 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("💾 Сохранить изменения", key=f"history_save_{repair_id}",
+                                    if st.button("Сохранить изменения", key=f"history_save_{repair_id}",
                                                  use_container_width=True):
                                         updated_data = {
                                             'gos_number': edit_gos,
                                             'repair_type': edit_repair_type,
-                                            'priority': edit_priority,
                                             'employees': ", ".join(edit_employees),
                                             'failure_reason': edit_failure_reason,
                                             'tags': ", ".join(edit_tags),
@@ -1665,8 +1831,7 @@ class RepairERP:
                                             st.rerun()
 
                                 with col2:
-                                    if st.button("❌ Отмена", key=f"history_cancel_{repair_id}",
-                                                 use_container_width=True):
+                                    if st.button("Отмена", key=f"history_cancel_{repair_id}", use_container_width=True):
                                         st.session_state[f"history_edit_{repair_id}"] = False
                                         st.rerun()
                 else:
@@ -1674,11 +1839,13 @@ class RepairERP:
             else:
                 st.info("Нет данных о ремонтах")
 
-    def show_employees(self):
-        """Управление сотрудниками"""
-        st.header("👥 Управление сотрудниками")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        tab1, tab2, tab3 = st.tabs(["📋 Список сотрудников", "➕ Добавить", "✏️ Редактировать"])
+    def show_employees(self):
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Управление сотрудниками")
+
+        tab1, tab2, tab3 = st.tabs(["Список сотрудников", "Добавить", "Редактировать"])
 
         with tab1:
             if len(st.session_state.employees) > 0:
@@ -1686,12 +1853,12 @@ class RepairERP:
                 display_df['daily_rate'] = display_df['daily_rate'].apply(lambda x: f"{x:,} ₽")
                 st.dataframe(display_df, use_container_width=True)
 
-                if st.button("📥 Экспорт списка сотрудников", key="export_employees"):
+                if st.button("Экспорт списка сотрудников", key="export_employees", use_container_width=True):
                     excel_data = self.export_manager.export_to_excel(
                         st.session_state.employees, "employees.xlsx", "Сотрудники"
                     )
                     st.download_button(
-                        label="📥 Скачать Excel",
+                        label="Скачать Excel",
                         data=excel_data,
                         file_name="employees.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1700,7 +1867,7 @@ class RepairERP:
                 st.info("Нет данных о сотрудниках")
 
         with tab2:
-            st.subheader("➕ Добавление нового сотрудника")
+            st.subheader("Добавление нового сотрудника")
             col1, col2, col3 = st.columns(3)
             with col1:
                 new_name = st.text_input("ФИО сотрудника", key="new_name")
@@ -1710,10 +1877,10 @@ class RepairERP:
             with col3:
                 new_rate = st.number_input("Ставка (день)", 0, 15000, 5000, 500, key="new_rate")
 
-            if st.button("➕ Добавить сотрудника", use_container_width=True):
+            if st.button("Добавить сотрудника", use_container_width=True):
                 if new_name:
                     if self.add_employee(new_name, new_role, new_rate):
-                        st.success(f"✅ Сотрудник {new_name} добавлен!")
+                        st.success(f"Сотрудник {new_name} добавлен!")
                         st.rerun()
                     else:
                         st.error("Ошибка при добавлении!")
@@ -1721,7 +1888,7 @@ class RepairERP:
                     st.error("Введите ФИО сотрудника!")
 
         with tab3:
-            st.subheader("✏️ Редактирование сотрудника")
+            st.subheader("Редактирование сотрудника")
             if len(st.session_state.employees) > 0:
                 employees_list = st.session_state.employees['name'].tolist()
                 selected_employee = st.selectbox("Выберите сотрудника", employees_list, key="edit_select")
@@ -1749,49 +1916,51 @@ class RepairERP:
 
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("💾 Сохранить изменения", use_container_width=True):
+                        if st.button("Сохранить изменения", use_container_width=True):
                             if self.update_employee(selected_employee, edit_name, edit_role, edit_rate):
-                                st.success("✅ Данные обновлены!")
+                                st.success("Данные обновлены!")
                                 st.rerun()
                             else:
                                 st.error("Ошибка обновления!")
 
                     with col2:
-                        if st.button("🗑️ Удалить сотрудника", use_container_width=True):
+                        if st.button("Удалить сотрудника", use_container_width=True):
                             if self.delete_employee(selected_employee):
-                                st.success(f"✅ Сотрудник {selected_employee} удален!")
+                                st.success(f"Сотрудник {selected_employee} удален!")
                                 st.rerun()
                             else:
                                 st.error("Ошибка удаления!")
             else:
                 st.info("Нет сотрудников для редактирования")
 
-    def show_warehouse(self):
-        """Управление складом с пополнением запасов"""
-        st.header("📦 Управление складом")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        tab1, tab2, tab3, tab4 = st.tabs(
-            ["📋 Текущие остатки", "📊 Прогноз закупок", "➕ Добавить запчасть", "📥 Пополнение запасов"])
+    def show_warehouse(self):
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Управление складом")
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(
+            ["Текущие остатки", "Прогноз закупок", "Добавить запчасть", "Пополнение запасов", "История движений"])
 
         with tab1:
-            st.subheader("📋 Текущие остатки")
+            st.subheader("Текущие остатки")
 
-            search = st.text_input("🔍 Поиск запчастей", placeholder="Введите название...")
+            search = st.text_input("Поиск запчастей", placeholder="Введите название...")
 
             df = st.session_state.spare_parts.copy()
             if search:
                 df = df[df['name'].str.contains(search, case=False, na=False)]
 
             df['status'] = df.apply(
-                lambda x: "🔴 Критический" if x['stock'] <= x['order_point']
-                else "🟡 Норма" if x['stock'] <= x['min_stock'] * 1.5
-                else "🟢 Достаточно", axis=1
+                lambda x: "Критический" if x['stock'] <= x['order_point']
+                else "Норма" if x['stock'] <= x['min_stock'] * 1.5
+                else "Достаточно", axis=1
             )
 
             st.dataframe(df, use_container_width=True)
 
             st.markdown("---")
-            st.subheader("✏️ Быстрое редактирование остатков")
+            st.subheader("Быстрое редактирование остатков")
 
             col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
@@ -1799,22 +1968,25 @@ class RepairERP:
             with col2:
                 new_stock = st.number_input("Новый остаток", min_value=0, value=0, key="new_stock_value")
             with col3:
-                if st.button("💾 Обновить остаток", key="update_stock_btn"):
+                if st.button("Обновить остаток", key="update_stock_btn", use_container_width=True):
                     if edit_part:
                         idx = st.session_state.spare_parts[st.session_state.spare_parts['name'] == edit_part].index[0]
                         old_stock = st.session_state.spare_parts.loc[idx, 'stock']
+                        change = new_stock - old_stock
                         st.session_state.spare_parts.loc[idx, 'stock'] = new_stock
+                        self.add_movement_record(edit_part, change, 'manual', None,
+                                                 f"Ручное изменение: {old_stock} -> {new_stock}")
                         self.save_all()
-                        st.success(f"✅ Остаток '{edit_part}' изменен: {old_stock} → {new_stock}")
+                        st.success(f"Остаток '{edit_part}' изменен: {old_stock} → {new_stock}")
                         st.rerun()
 
         with tab2:
-            st.subheader("📊 Прогноз закупок запчастей")
+            st.subheader("Прогноз закупок запчастей")
             st.info("Прогноз основан на реальной статистике использования запчастей в ремонтах")
 
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("📈 На 200 ремонтов")
+                st.subheader("На 200 ремонтов")
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
                     fig_frequency = px.bar(
@@ -1832,7 +2004,7 @@ class RepairERP:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
 
             with col2:
-                st.subheader("📅 На месяц")
+                st.subheader("На месяц")
                 monthly_forecast = self.get_monthly_forecast()
                 if len(monthly_forecast) > 0:
                     fig_monthly = px.bar(
@@ -1850,7 +2022,7 @@ class RepairERP:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
 
         with tab3:
-            st.subheader("➕ Добавление новой запчасти")
+            st.subheader("Добавление новой запчасти")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 new_name = st.text_input("Название", key="new_part_name")
@@ -1861,19 +2033,20 @@ class RepairERP:
             with col4:
                 new_order = st.number_input("Точка заказа", 0, 100, 8, key="new_part_order")
 
-            if st.button("➕ Добавить запчасть", key="add_part_btn"):
+            if st.button("Добавить запчасть", key="add_part_btn", use_container_width=True):
                 if new_name:
                     new_row = pd.DataFrame([{
                         'name': new_name, 'stock': new_stock,
                         'min_stock': new_min, 'order_point': new_order
                     }])
                     st.session_state.spare_parts = pd.concat([st.session_state.spare_parts, new_row], ignore_index=True)
+                    self.add_movement_record(new_name, new_stock, 'initial', None, "Начальное добавление")
                     self.save_all()
-                    st.success(f"✅ Запчасть '{new_name}' добавлена")
+                    st.success(f"Запчасть '{new_name}' добавлена")
                     st.rerun()
 
         with tab4:
-            st.subheader("📥 Пополнение запасов")
+            st.subheader("Пополнение запасов")
             st.info("Добавьте новые поступления запчастей на склад")
 
             parts_list = st.session_state.spare_parts['name'].tolist()
@@ -1907,144 +2080,59 @@ class RepairERP:
                     )
 
                 with col2:
-                    supplier = st.text_input("Поставщик (опционально)", placeholder="Название компании", key="supplier")
-
-                invoice_number = st.text_input("Номер накладной (опционально)", placeholder="№123456", key="invoice")
-                comment = st.text_area("Комментарий к поступлению",
-                                       placeholder="Например: новая партия, брак, возврат и т.д.",
-                                       key="restock_comment")
+                    comment = st.text_area("Комментарий к поступлению",
+                                           placeholder="Например: новая партия, брак, возврат и т.д.",
+                                           key="restock_comment")
 
                 st.markdown("---")
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("✅ Подтвердить поступление", use_container_width=True, key="confirm_restock"):
+                    if st.button("Подтвердить поступление", use_container_width=True, key="confirm_restock"):
                         new_stock = current_stock + add_quantity
                         st.session_state.spare_parts.loc[part_idx, 'stock'] = new_stock
+                        self.add_movement_record(selected_part, add_quantity, 'in', None, comment)
                         self.save_all()
-                        st.success(f"✅ На склад добавлено {add_quantity} шт. '{selected_part}'")
-                        st.info(f"📊 Новый остаток: {new_stock} шт. (было: {current_stock})")
-                        if supplier:
-                            st.info(f"📦 Поставщик: {supplier}")
-                        if invoice_number:
-                            st.info(f"📄 Накладная: {invoice_number}")
-                        if comment:
-                            st.info(f"💬 {comment}")
+                        st.success(f"На склад добавлено {add_quantity} шт. '{selected_part}'")
+                        st.info(f"Новый остаток: {new_stock} шт. (было: {current_stock})")
                         st.balloons()
                         time.sleep(2)
                         st.rerun()
 
                 with col2:
-                    if st.button("❌ Отмена", use_container_width=True, key="cancel_restock"):
+                    if st.button("Отмена", use_container_width=True, key="cancel_restock"):
                         st.rerun()
 
-            st.markdown("---")
+        with tab5:
+            st.subheader("История движений запчастей")
 
-            with st.expander("📊 Массовый импорт из Excel"):
-                st.info("Загрузите Excel файл с колонками: name, stock, min_stock, order_point")
-                st.warning(
-                    "⚠️ Внимание: Если запчасть с таким названием уже существует, её остаток будет УВЕЛИЧЕН на указанное значение")
+            if len(st.session_state.parts_movement) > 0:
+                movement_df = st.session_state.parts_movement.copy().sort_values('date', ascending=False)
 
-                template_df = pd.DataFrame({
-                    'name': ['Новая запчасть 1', 'Новая запчасть 2'],
-                    'stock': [10, 20],
-                    'min_stock': [5, 10],
-                    'order_point': [8, 15]
-                })
+                filter_part = st.selectbox("Фильтр по запчасти",
+                                           ["Все"] + st.session_state.spare_parts['name'].tolist())
+                if filter_part != "Все":
+                    movement_df = movement_df[movement_df['part_name'] == filter_part]
 
-                template_buffer = BytesIO()
-                with pd.ExcelWriter(template_buffer, engine='openpyxl') as writer:
-                    template_df.to_excel(writer, sheet_name='Запчасти', index=False)
-                template_buffer.seek(0)
+                st.dataframe(movement_df, use_container_width=True)
 
-                st.download_button(
-                    label="📥 Скачать шаблон Excel",
-                    data=template_buffer.getvalue(),
-                    file_name="template_parts.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_template"
-                )
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    total_in = movement_df[movement_df['change'] > 0]['change'].sum()
+                    st.metric("Всего поступлений", f"{total_in} шт.")
+                with col2:
+                    total_out = movement_df[movement_df['change'] < 0]['change'].sum()
+                    st.metric("Всего расходов", f"{abs(total_out)} шт.")
+                with col3:
+                    st.metric("Всего операций", len(movement_df))
+            else:
+                st.info("Нет истории движений")
 
-                uploaded_file = st.file_uploader("Загрузите Excel файл", type=['xlsx', 'xls'], key="bulk_upload")
-
-                if uploaded_file:
-                    try:
-                        df_bulk = pd.read_excel(uploaded_file)
-                        required_columns = ['name', 'stock', 'min_stock', 'order_point']
-                        missing_columns = [col for col in required_columns if col not in df_bulk.columns]
-
-                        if missing_columns:
-                            st.error(f"❌ Отсутствуют колонки: {missing_columns}")
-                        else:
-                            st.subheader("📋 Предпросмотр данных:")
-                            st.dataframe(df_bulk.head(10), use_container_width=True)
-
-                            if st.button("✅ Подтвердить массовый импорт", use_container_width=True, key="confirm_bulk"):
-                                added_count = 0
-                                updated_count = 0
-
-                                for _, row in df_bulk.iterrows():
-                                    name = row['name']
-                                    stock_to_add = row.get('stock', 0)
-                                    min_stock = row.get('min_stock', 10)
-                                    order_point = row.get('order_point', 15)
-
-                                    existing = st.session_state.spare_parts[
-                                        st.session_state.spare_parts['name'] == name]
-
-                                    if len(existing) > 0:
-                                        idx = existing.index[0]
-                                        old_stock = st.session_state.spare_parts.loc[idx, 'stock']
-                                        st.session_state.spare_parts.loc[idx, 'stock'] = old_stock + stock_to_add
-                                        updated_count += 1
-                                    else:
-                                        new_part = pd.DataFrame([{
-                                            'name': name,
-                                            'stock': stock_to_add,
-                                            'min_stock': min_stock,
-                                            'order_point': order_point
-                                        }])
-                                        st.session_state.spare_parts = pd.concat(
-                                            [st.session_state.spare_parts, new_part], ignore_index=True)
-                                        added_count += 1
-
-                                self.save_all()
-                                st.success(
-                                    f"✅ Массовый импорт завершен! Добавлено: {added_count}, Обновлено: {updated_count}")
-                                st.balloons()
-                                time.sleep(2)
-                                st.rerun()
-
-                    except Exception as e:
-                        st.error(f"❌ Ошибка при чтении файла: {e}")
-
-        st.markdown("---")
-        st.subheader("📤 Экспорт данных склада")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📥 Экспорт склада в Excel", use_container_width=True):
-                excel_data = self.export_manager.export_warehouse(st.session_state.spare_parts)
-                st.download_button(
-                    label="📥 Скачать Excel",
-                    data=excel_data,
-                    file_name=f"warehouse_{datetime.date.today()}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
-        with col2:
-            if st.button("📥 Экспорт в CSV", use_container_width=True):
-                csv_data = self.export_manager.export_to_csv(st.session_state.spare_parts, "warehouse.csv")
-                st.download_button(
-                    label="📥 Скачать CSV",
-                    data=csv_data,
-                    file_name=f"warehouse_{datetime.date.today()}.csv",
-                    mime="text/csv"
-                )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     def show_analytics(self):
-        """Аналитика с расширенной статистикой"""
-        st.header("📈 Аналитика")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Аналитика")
 
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -2099,25 +2187,26 @@ class RepairERP:
         else:
             period_days = pd.DataFrame()
 
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Дашборд", "📋 Ремонты", "🏆 KPI сотрудников", "📦 Аналитика склада"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(
+            ["Дашборд", "Ремонты", "KPI сотрудников", "Аналитика склада", "Тепловая карта"])
 
         with tab1:
-            st.subheader(f"📊 Дашборд за {period_label}")
+            st.subheader(f"Дашборд за {period_label}")
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 total_repairs = len(period_repairs)
-                st.metric("🔧 Всего ремонтов", total_repairs)
+                st.metric("Всего ремонтов", total_repairs)
             with col2:
                 completed = len(period_repairs[period_repairs['status'] == 'Завершен']) if len(
                     period_repairs) > 0 else 0
-                st.metric("✅ Завершено", completed)
+                st.metric("Завершено", completed)
             with col3:
                 in_progress = len(period_repairs[period_repairs['status'] == 'В работе']) if len(
                     period_repairs) > 0 else 0
-                st.metric("🔄 В работе", in_progress)
+                st.metric("В работе", in_progress)
             with col4:
-                st.metric("👥 Сотрудников", len(st.session_state.employees))
+                st.metric("Сотрудников", len(st.session_state.employees))
 
             st.markdown("---")
 
@@ -2130,71 +2219,46 @@ class RepairERP:
                             values=type_counts.values,
                             names=type_counts.index,
                             title="Распределение по типам ремонта",
-                            color_discrete_sequence=px.colors.qualitative.Set3
+                            color_discrete_sequence=px.colors.qualitative.Set3,
+                            hole=0.4
                         )
                         fig.update_traces(textposition='inside', textinfo='percent+label')
                         st.plotly_chart(fig, use_container_width=True)
-
-                with col2:
-                    priority_counts = period_repairs['priority'].value_counts()
-                    if len(priority_counts) > 0:
-                        colors = {'Высокий': '#ff6b6b', 'Средний': '#ffd93d', 'Низкий': '#6bcb77'}
-                        fig = px.bar(
-                            x=priority_counts.index,
-                            y=priority_counts.values,
-                            title="Приоритеты ремонтов",
-                            color=priority_counts.index,
-                            color_discrete_map=colors,
-                            text=priority_counts.values
-                        )
-                        fig.update_traces(textposition='outside')
-                        st.plotly_chart(fig, use_container_width=True)
-
-                status_counts = period_repairs['status'].value_counts()
-                if len(status_counts) > 0:
-                    fig = px.bar(
-                        x=status_counts.index,
-                        y=status_counts.values,
-                        title="Статусы ремонтов",
-                        color=status_counts.index,
-                        text=status_counts.values
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Нет данных для отображения")
 
         with tab2:
-            st.subheader(f"📋 Статистика ремонтов за {period_label}")
+            st.subheader(f"Статистика ремонтов за {period_label}")
 
             if len(period_repairs) > 0:
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     if analytics_type == "По дням":
-                        st.metric("📊 Ремонтов за день", len(period_repairs))
+                        st.metric("Ремонтов за день", len(period_repairs))
                     elif analytics_type == "По месяцам":
                         days_in_month = calendar.monthrange(year, month)[1]
                         avg_per_day = len(period_repairs) / days_in_month if days_in_month > 0 else 0
-                        st.metric("📊 Ремонтов за месяц", len(period_repairs))
-                        st.metric("📈 В среднем в день", f"{avg_per_day:.1f}")
+                        st.metric("Ремонтов за месяц", len(period_repairs))
+                        st.metric("В среднем в день", f"{avg_per_day:.1f}")
                     else:
                         avg_per_month = len(period_repairs) / 12 if len(period_repairs) > 0 else 0
-                        st.metric("📊 Ремонтов за год", len(period_repairs))
-                        st.metric("📈 В среднем в месяц", f"{avg_per_month:.1f}")
+                        st.metric("Ремонтов за год", len(period_repairs))
+                        st.metric("В среднем в месяц", f"{avg_per_month:.1f}")
 
                 with col2:
                     in_repair = len(period_repairs[period_repairs['status'] == 'В работе'])
                     closed = len(period_repairs[period_repairs['status'] == 'Завершен'])
-                    st.metric("🔄 В ремонте", in_repair)
-                    st.metric("✅ Закрыто", closed)
+                    st.metric("В ремонте", in_repair)
+                    st.metric("Закрыто", closed)
 
                 with col3:
                     completion_rate = (closed / len(period_repairs) * 100) if len(period_repairs) > 0 else 0
-                    st.metric("📊 Процент завершения", f"{completion_rate:.1f}%")
+                    st.metric("Процент завершения", f"{completion_rate:.1f}%")
 
                 st.markdown("---")
 
                 if analytics_type in ["По месяцам", "По годам"]:
-                    st.subheader("📈 Динамика поступлений ремонтов")
+                    st.subheader("Динамика поступлений ремонтов")
 
                     if analytics_type == "По месяцам":
                         days_in_month = calendar.monthrange(year, month)[1]
@@ -2239,7 +2303,7 @@ class RepairERP:
                 st.info("Нет данных для отображения")
 
         with tab3:
-            st.subheader(f"🏆 KPI сотрудников за {period_label}")
+            st.subheader(f"KPI сотрудников за {period_label}")
 
             if len(st.session_state.employees) > 0:
                 total_repairs = len(period_repairs)
@@ -2248,11 +2312,11 @@ class RepairERP:
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("👥 Всего сотрудников", total_employees)
+                    st.metric("Всего сотрудников", total_employees)
                 with col2:
-                    st.metric("🔧 Всего ремонтов", total_repairs)
+                    st.metric("Всего ремонтов", total_repairs)
                 with col3:
-                    st.metric("📊 В среднем на сотрудника", f"{avg_per_employee:.1f}")
+                    st.metric("В среднем на сотрудника", f"{avg_per_employee:.1f}")
 
                 st.markdown("---")
 
@@ -2284,7 +2348,7 @@ class RepairERP:
                 st.dataframe(kpi_df, use_container_width=True)
 
                 st.markdown("---")
-                st.subheader("📊 Визуализация KPI")
+                st.subheader("Визуализация KPI")
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -2326,21 +2390,21 @@ class RepairERP:
                 st.info("Нет данных о сотрудниках")
 
         with tab4:
-            st.subheader("📦 Аналитика склада")
+            st.subheader("Аналитика склада")
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("📦 Всего запчастей", len(st.session_state.spare_parts))
+                st.metric("Всего запчастей", len(st.session_state.spare_parts))
             with col2:
                 total_stock = st.session_state.spare_parts['stock'].sum() if len(
                     st.session_state.spare_parts) > 0 else 0
-                st.metric("📊 Общий остаток", f"{total_stock} шт.")
+                st.metric("Общий остаток", f"{total_stock} шт.")
             with col3:
                 deficit_count = len(st.session_state.spare_parts[
                                         st.session_state.spare_parts['stock'] <= st.session_state.spare_parts[
                                             'order_point']
                                         ])
-                st.metric("⚠️ Дефицит", deficit_count)
+                st.metric("Дефицит", deficit_count)
 
             st.markdown("---")
 
@@ -2348,19 +2412,19 @@ class RepairERP:
                 st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
                 ]
             if len(low_stock) > 0:
-                st.warning(f"⚠️ Внимание! {len(low_stock)} запчастей требуют пополнения:")
+                st.warning(f"Внимание! {len(low_stock)} запчастей требуют пополнения:")
                 st.dataframe(low_stock[['name', 'stock', 'min_stock', 'order_point']], use_container_width=True)
             else:
-                st.success("✅ Все запчасти в достаточном количестве")
+                st.success("Все запчасти в достаточном количестве")
 
             st.markdown("---")
-            st.subheader("📊 Прогноз закупок")
+            st.subheader("Прогноз закупок")
 
             st.info("Прогноз основан на реальной статистике использования запчастей в ремонтах")
 
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown("### 📈 На 200 ремонтов")
+                st.markdown("### На 200 ремонтов")
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
                     fig_freq = px.bar(
@@ -2389,7 +2453,7 @@ class RepairERP:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
 
             with col2:
-                st.markdown("### 📅 На месяц")
+                st.markdown("### На месяц")
                 monthly_forecast = self.get_monthly_forecast()
                 if len(monthly_forecast) > 0:
                     fig = px.bar(
@@ -2406,24 +2470,60 @@ class RepairERP:
                 else:
                     st.info("Нет данных для прогноза (добавьте завершенные ремонты)")
 
-            st.markdown("---")
-            st.subheader("📤 Экспорт аналитики")
+        with tab5:
+            st.subheader("Тепловая карта загрузки сотрудников")
 
-            if st.button("📥 Экспорт аналитики в Excel", use_container_width=True):
-                excel_data = self.export_manager.export_analytics(
-                    period_repairs, st.session_state.spare_parts,
-                    st.session_state.employees, period_label
+            if len(st.session_state.employees) > 0 and len(st.session_state.work_days) > 0:
+                heatmap_data = []
+
+                heatmap_year = st.selectbox("Год", [2024, 2025, 2026], index=1, key="heatmap_year")
+                heatmap_month = st.selectbox("Месяц", range(1, 13), format_func=lambda x: f"{x:02d}",
+                                             key="heatmap_month")
+
+                days_in_month = calendar.monthrange(heatmap_year, heatmap_month)[1]
+                employees_list = st.session_state.employees['name'].tolist()
+
+                for emp in employees_list:
+                    row = {'Сотрудник': emp}
+                    for day in range(1, days_in_month + 1):
+                        date = datetime.date(heatmap_year, heatmap_month, day)
+                        worked = len(st.session_state.work_days[
+                                         (st.session_state.work_days['employee'] == emp) &
+                                         (st.session_state.work_days['date'] == date.isoformat())
+                                         ]) > 0
+                        row[f'День {day}'] = 1 if worked else 0
+                    heatmap_data.append(row)
+
+                heatmap_df = pd.DataFrame(heatmap_data)
+                heatmap_display = heatmap_df.set_index('Сотрудник').T
+
+                fig = px.imshow(
+                    heatmap_display,
+                    title=f"Тепловая карта загрузки сотрудников за {heatmap_month:02d}.{heatmap_year}",
+                    labels=dict(x="Сотрудник", y="День месяца", color="Работал"),
+                    color_continuous_scale=[[0, '#fee2e2'], [1, '#22c55e']],
+                    aspect="auto"
                 )
-                st.download_button(
-                    label="📥 Скачать Excel",
-                    data=excel_data,
-                    file_name=f"analytics_{period_label}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                fig.update_layout(height=500)
+                st.plotly_chart(fig, use_container_width=True)
+
+                total_days = days_in_month * len(employees_list)
+                worked_days = sum([sum([v for k, v in row.items() if k != 'Сотрудник']) for row in heatmap_data])
+                load_percent = (worked_days / total_days) * 100 if total_days > 0 else 0
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Всего человеко-дней", f"{worked_days} / {total_days}")
+                with col2:
+                    st.metric("Общая загрузка", f"{load_percent:.1f}%")
+            else:
+                st.info("Нет данных о сотрудниках или отработанных днях")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     def show_reports(self):
-        """Отчеты с KPI сотрудников, аналитикой по складу и дашбордом"""
-        st.header("📑 Комплексный отчет")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Комплексный отчет")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -2450,26 +2550,25 @@ class RepairERP:
                 period_days = pd.DataFrame()
 
             report_tab1, report_tab2, report_tab3, report_tab4 = st.tabs(
-                ["📊 Дашборд", "📋 Ремонты", "🏆 KPI сотрудников", "📦 Аналитика склада"]
-            )
+                ["Дашборд", "Ремонты", "KPI сотрудников", "Аналитика склада"])
 
             with report_tab1:
-                st.subheader(f"📊 Сводка за {report_month:02d}.{report_year}")
+                st.subheader(f"Сводка за {report_month:02d}.{report_year}")
 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("🔧 Всего ремонтов", len(period_repairs))
+                    st.metric("Всего ремонтов", len(period_repairs))
                 with col2:
                     completed = len(period_repairs[period_repairs['status'] == 'Завершен'])
-                    st.metric("✅ Завершено", completed)
+                    st.metric("Завершено", completed)
                 with col3:
-                    st.metric("👥 Сотрудников", len(st.session_state.employees))
+                    st.metric("Сотрудников", len(st.session_state.employees))
                 with col4:
                     deficit = len(st.session_state.spare_parts[
                                       st.session_state.spare_parts['stock'] <= st.session_state.spare_parts[
                                           'order_point']
                                       ])
-                    st.metric("📦 Дефицит запчастей", deficit)
+                    st.metric("Дефицит запчастей", deficit)
 
                 st.markdown("---")
 
@@ -2485,17 +2584,12 @@ class RepairERP:
                                 times.append((end - start).days)
                         avg_time = sum(times) / len(times) if times else 0
 
-                    urgent_pct = (len(period_repairs[period_repairs['priority'] == 'Высокий']) / len(
-                        period_repairs)) * 100
-
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("⏱️ Среднее время ремонта", f"{avg_time:.1f} дн.")
-                    with col2:
-                        st.metric("🚨 Срочных ремонтов", f"{urgent_pct:.0f}%")
+                        st.metric("Среднее время ремонта", f"{avg_time:.1f} дн.")
 
             with report_tab2:
-                st.subheader("📋 Детальный список ремонтов")
+                st.subheader("Детальный список ремонтов")
 
                 if len(period_repairs) > 0:
                     report_data = []
@@ -2516,7 +2610,6 @@ class RepairERP:
                             'Длительность': duration,
                             'Тип ремонта': repair['repair_type'],
                             'Причина': repair['failure_reason'],
-                            'Приоритет': repair['priority'],
                             'Статус': repair['status'],
                             'Исполнители': repair['employees'],
                             'Работы': repair['works'] if repair['works'] else '—',
@@ -2529,7 +2622,7 @@ class RepairERP:
                     st.info("Нет ремонтов за выбранный период")
 
             with report_tab3:
-                st.subheader("🏆 KPI сотрудников")
+                st.subheader("KPI сотрудников")
 
                 if len(st.session_state.employees) > 0:
                     kpi_data = []
@@ -2545,7 +2638,6 @@ class RepairERP:
                             period_days) > 0 else pd.DataFrame()
                         days_worked = len(emp_days)
 
-                        # Расчет ФОТ с учетом праздничных дней
                         fot = 0
                         holiday_days = 0
                         for _, day in emp_days.iterrows():
@@ -2583,21 +2675,21 @@ class RepairERP:
                     st.info("Нет данных о сотрудниках")
 
             with report_tab4:
-                st.subheader("📦 Аналитика склада")
+                st.subheader("Аналитика склада")
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("📦 Всего запчастей", len(st.session_state.spare_parts))
+                    st.metric("Всего запчастей", len(st.session_state.spare_parts))
                     deficit_count = len(st.session_state.spare_parts[
                                             st.session_state.spare_parts['stock'] <= st.session_state.spare_parts[
                                                 'order_point']
                                             ])
-                    st.metric("⚠️ Дефицит", deficit_count)
+                    st.metric("Дефицит", deficit_count)
 
                 with col2:
                     total_stock = st.session_state.spare_parts['stock'].sum() if len(
                         st.session_state.spare_parts) > 0 else 0
-                    st.metric("📊 Общий остаток", f"{total_stock} шт.")
+                    st.metric("Общий остаток", f"{total_stock} шт.")
 
                 st.markdown("---")
 
@@ -2605,13 +2697,13 @@ class RepairERP:
                     st.session_state.spare_parts['stock'] <= st.session_state.spare_parts['order_point']
                     ]
                 if len(low_stock) > 0:
-                    st.warning("⚠️ Запчасти, требующие пополнения:")
+                    st.warning("Запчасти, требующие пополнения:")
                     st.dataframe(low_stock[['name', 'stock', 'order_point']], use_container_width=True)
                 else:
-                    st.success("✅ Все запчасти в достаточном количестве")
+                    st.success("Все запчасти в достаточном количестве")
 
                 st.markdown("---")
-                st.subheader("📊 Прогнозы закупок")
+                st.subheader("Прогнозы закупок")
 
                 forecast_200 = self.get_parts_forecast(200)
                 if len(forecast_200) > 0:
@@ -2619,7 +2711,7 @@ class RepairERP:
                     st.dataframe(forecast_200.head(10), use_container_width=True)
 
             st.markdown("---")
-            if st.button("📥 Экспорт полного отчета в Excel", use_container_width=True):
+            if st.button("Экспорт полного отчета в Excel", use_container_width=True):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     dashboard_data = pd.DataFrame([{
@@ -2672,7 +2764,7 @@ class RepairERP:
                         forecast_200.to_excel(writer, sheet_name='Прогноз_200', index=False)
 
                 st.download_button(
-                    label="📥 Скачать Excel",
+                    label="Скачать Excel",
                     data=output.getvalue(),
                     file_name=f"full_report_{report_year}_{report_month:02d}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2680,32 +2772,33 @@ class RepairERP:
         else:
             st.info("Нет данных для формирования отчета")
 
-    def show_work_days(self):
-        """Учет отработанных дней с календарем и днями аванса"""
-        st.header("📅 Учет отработанных дней")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # Информация о праздниках
-        with st.expander("📅 Календарь праздничных дней"):
-            st.markdown("**📌 Официальные праздничные дни (оплата x2):**")
+    def show_work_days(self):
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Учет отработанных дней")
+
+        with st.expander("Календарь праздничных дней"):
+            st.markdown("**Официальные праздничные дни (оплата x2):**")
             col1, col2 = st.columns(2)
             with col1:
                 for (month, day), name in sorted(FIXED_HOLIDAYS.items()):
                     if month <= 6:
-                        st.write(f"• {day:02d}.{month:02d} - {name}")
+                        st.write(f"- {day:02d}.{month:02d} - {name}")
             with col2:
                 for (month, day), name in sorted(FIXED_HOLIDAYS.items()):
                     if month > 6:
-                        st.write(f"• {day:02d}.{month:02d} - {name}")
+                        st.write(f"- {day:02d}.{month:02d} - {name}")
 
             st.markdown("---")
-            st.markdown("**💰 Оплата:**")
-            st.markdown("• Праздничные дни: **x2** (двойная оплата)")
-            st.markdown("• Выходные дни (суббота/воскресенье): **x1** (обычная оплата)")
-            st.markdown("• Будние дни: **x1** (обычная оплата)")
-            st.info("ℹ️ Если праздничный день выпадает на выходной, он всё равно оплачивается x2")
+            st.markdown("**Оплата:**")
+            st.markdown("- Праздничные дни: **x2** (двойная оплата)")
+            st.markdown("- Выходные дни (суббота/воскресенье): **x1** (обычная оплата)")
+            st.markdown("- Будние дни: **x1** (обычная оплата)")
+            st.info("Если праздничный день выпадает на выходной, он всё равно оплачивается x2")
 
         st.markdown("---")
-        st.subheader("🚀 Быстрая отметка")
+        st.subheader("Быстрая отметка")
 
         col1, col2, col3 = st.columns([2, 2, 1])
         with col1:
@@ -2716,12 +2809,12 @@ class RepairERP:
         with col3:
             st.write("")
             st.write("")
-            if st.button("✅ Вышел на смену", key="check_in_btn", use_container_width=True):
+            if st.button("Вышел на смену", key="check_in_btn", use_container_width=True):
                 work_info = get_workday_info(work_date)
                 if work_info['is_holiday']:
                     success, message = self.add_work_day(work_date, selected_employee, 8, "")
                     if success:
-                        st.success(f"✅ {message} (ПРАЗДНИЧНЫЙ ДЕНЬ - оплата x2!)")
+                        st.success(f"{message} (ПРАЗДНИЧНЫЙ ДЕНЬ - оплата x2!)")
                         st.balloons()
                         st.rerun()
                     else:
@@ -2729,16 +2822,15 @@ class RepairERP:
                 else:
                     success, message = self.add_work_day(work_date, selected_employee, 8, "")
                     if success:
-                        st.success(f"✅ {message}")
+                        st.success(f"{message}")
                         st.rerun()
                     else:
                         st.error(message)
 
         st.markdown("---")
 
-        # ==================== ДНИ АВАНСА ====================
-        st.subheader("💰 Дни аванса")
-        st.info("📅 Аванс выплачивается **5** и **20** числа каждого месяца")
+        st.subheader("Дни аванса")
+        st.info("Аванс выплачивается **5** и **20** числа каждого месяца")
 
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -2750,7 +2842,7 @@ class RepairERP:
             advance_year = st.number_input("Год", value=datetime.date.today().year,
                                            min_value=2024, max_value=2026, key="advance_year")
         with col3:
-            if st.button("🔄 Рассчитать аванс", use_container_width=True, key="calc_advance"):
+            if st.button("Рассчитать аванс", use_container_width=True, key="calc_advance"):
                 st.rerun()
 
         advance_dates = get_advance_dates(advance_year, advance_month)
@@ -2758,11 +2850,11 @@ class RepairERP:
         if len(advance_dates) == 2:
             date_5, date_20 = advance_dates
 
-            tab_5, tab_20 = st.tabs([f"📅 Аванс за 5 число ({date_5.strftime('%d.%m.%Y')})",
-                                     f"📅 Аванс за 20 число ({date_20.strftime('%d.%m.%Y')})"])
+            tab_5, tab_20 = st.tabs([f"Аванс за 5 число ({date_5.strftime('%d.%m.%Y')})",
+                                     f"Аванс за 20 число ({date_20.strftime('%d.%m.%Y')})"])
 
             with tab_5:
-                st.subheader(f"💰 Расчет аванса на {date_5.strftime('%d.%m.%Y')}")
+                st.subheader(f"Расчет аванса на {date_5.strftime('%d.%m.%Y')}")
 
                 if len(st.session_state.employees) > 0:
                     advance_data_5 = []
@@ -2792,14 +2884,14 @@ class RepairERP:
 
                     total_advance_5 = sum(
                         [float(x['Аванс (50%)'].replace(' ₽', '').replace(',', '')) for x in advance_data_5])
-                    st.metric("📊 Общая сумма аванса", f"{total_advance_5:,.0f} ₽")
+                    st.metric("Общая сумма аванса", f"{total_advance_5:,.0f} ₽")
 
-                    if st.button("📥 Экспорт расчета аванса (5 число)", key="export_advance_5"):
+                    if st.button("Экспорт расчета аванса (5 число)", key="export_advance_5", use_container_width=True):
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             advance_df_5.to_excel(writer, sheet_name=f'Аванс_{date_5.strftime("%d.%m")}', index=False)
                         st.download_button(
-                            label="📥 Скачать Excel",
+                            label="Скачать Excel",
                             data=output.getvalue(),
                             file_name=f"advance_{date_5.strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2808,7 +2900,7 @@ class RepairERP:
                     st.info("Нет данных о сотрудниках")
 
             with tab_20:
-                st.subheader(f"💰 Расчет аванса на {date_20.strftime('%d.%m.%Y')}")
+                st.subheader(f"Расчет аванса на {date_20.strftime('%d.%m.%Y')}")
 
                 if len(st.session_state.employees) > 0:
                     advance_data_20 = []
@@ -2838,14 +2930,15 @@ class RepairERP:
 
                     total_advance_20 = sum(
                         [float(x['Аванс (50%)'].replace(' ₽', '').replace(',', '')) for x in advance_data_20])
-                    st.metric("📊 Общая сумма аванса", f"{total_advance_20:,.0f} ₽")
+                    st.metric("Общая сумма аванса", f"{total_advance_20:,.0f} ₽")
 
-                    if st.button("📥 Экспорт расчета аванса (20 число)", key="export_advance_20"):
+                    if st.button("Экспорт расчета аванса (20 число)", key="export_advance_20",
+                                 use_container_width=True):
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             advance_df_20.to_excel(writer, sheet_name=f'Аванс_{date_20.strftime("%d.%m")}', index=False)
                         st.download_button(
-                            label="📥 Скачать Excel",
+                            label="Скачать Excel",
                             data=output.getvalue(),
                             file_name=f"advance_{date_20.strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2855,8 +2948,7 @@ class RepairERP:
 
         st.markdown("---")
 
-        # ==================== КАЛЕНДАРЬ ====================
-        st.subheader("📅 Календарь рабочих дней")
+        st.subheader("Календарь рабочих дней")
 
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -2866,7 +2958,7 @@ class RepairERP:
         with col2:
             st.write("")
             st.write("")
-            st.markdown("**📖 Легенда:**")
+            st.markdown("**Легенда:**")
             st.markdown("🟢 **Зеленый** - есть работавшие")
             st.markdown("🔴 **Красный** - нет работавших")
             st.markdown("🟡 **Желтый** - ПРАЗДНИЧНЫЙ день (оплата x2)")
@@ -2917,16 +3009,16 @@ class RepairERP:
 
                         if is_holiday_day:
                             cols[i].markdown(
-                                f'<div class="calendar-day-holiday" title="ПРАЗДНИК: {holiday_name} | Работали: {employees_list} | Оплата: x2">'
+                                f'<div class="calendar-day" title="ПРАЗДНИК: {holiday_name} | Работали: {employees_list} | Оплата: x2" style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">🎉 {employees_count} чел.</span>'
-                                f'<br><span class="holiday-badge">x2</span>'
+                                f'<br><span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 20px; font-size: 10px;">x2</span>'
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
                         elif is_advance_day:
                             cols[i].markdown(
-                                f'<div class="calendar-day-work" title="День аванса | Работали: {employees_list}" style="background-color: #cce5ff; border-color: #b8daff;">'
+                                f'<div class="calendar-day" title="День аванса | Работали: {employees_list}" style="background: #dbeafe; border-color: #3b82f6; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">💰 {employees_count} чел.</span>'
                                 f'</div>',
@@ -2934,7 +3026,7 @@ class RepairERP:
                             )
                         else:
                             cols[i].markdown(
-                                f'<div class="calendar-day-work" title="Работали: {employees_list}">'
+                                f'<div class="calendar-day" title="Работали: {employees_list}" style="background: #d1fae5; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">👥 {employees_count}</span>'
                                 f'</div>',
@@ -2943,16 +3035,16 @@ class RepairERP:
                     else:
                         if is_holiday_day:
                             cols[i].markdown(
-                                f'<div class="calendar-day-holiday" title="ПРАЗДНИК: {holiday_name} (оплата x2)">'
+                                f'<div class="calendar-day" title="ПРАЗДНИК: {holiday_name} (оплата x2)" style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">🎉 {holiday_name[:8]}</span>'
-                                f'<br><span class="holiday-badge">x2</span>'
+                                f'<br><span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 20px; font-size: 10px;">x2</span>'
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
                         elif is_advance_day:
                             cols[i].markdown(
-                                f'<div class="calendar-day-work" title="День аванса" style="background-color: #cce5ff; border-color: #b8daff;">'
+                                f'<div class="calendar-day" title="День аванса" style="background: #dbeafe; border-color: #3b82f6; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">💰</span>'
                                 f'</div>',
@@ -2960,7 +3052,7 @@ class RepairERP:
                             )
                         elif current_date.weekday() >= 5:
                             cols[i].markdown(
-                                f'<div class="calendar-day-off" title="Выходной день (суббота/воскресенье) - оплата x1">'
+                                f'<div class="calendar-day" title="Выходной день (суббота/воскресенье) - оплата x1" style="background: #fee2e2; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">😴</span>'
                                 f'</div>',
@@ -2968,7 +3060,7 @@ class RepairERP:
                             )
                         else:
                             cols[i].markdown(
-                                f'<div class="calendar-day-work" title="Рабочий день - оплата x1">'
+                                f'<div class="calendar-day" title="Рабочий день - оплата x1" style="background: #e2e8f0; border-radius: 12px; padding: 12px; text-align: center;">'
                                 f'<b>{day}</b><br>'
                                 f'<span style="font-size: 11px;">📅</span>'
                                 f'</div>',
@@ -2977,8 +3069,7 @@ class RepairERP:
 
         st.markdown("---")
 
-        # ==================== ДЕТАЛЬНАЯ ИНФОРМАЦИЯ ПО ДНЮ ====================
-        st.subheader("📋 Детальная информация по дню")
+        st.subheader("Детальная информация по дню")
 
         selected_date = st.date_input("Выберите дату для просмотра", datetime.date.today(), key="detail_date")
         date_str = selected_date.isoformat()
@@ -2993,42 +3084,42 @@ class RepairERP:
         with col1:
             if is_holiday_selected:
                 st.info(
-                    f"🎉 **{selected_date.strftime('%d.%m.%Y')}**\n\n{holiday_name_selected}\n\n💰 Оплата: **x2 (праздничный день)**")
+                    f"**{selected_date.strftime('%d.%m.%Y')}**\n\n{holiday_name_selected}\n\nОплата: **x2 (праздничный день)**")
             elif is_advance_selected:
-                st.info(f"💰 **{selected_date.strftime('%d.%m.%Y')}**\n\nДень аванса\n\n💰 Оплата: x1")
+                st.info(f"**{selected_date.strftime('%d.%m.%Y')}**\n\nДень аванса\n\nОплата: x1")
             elif is_weekend_selected:
                 weekday_name = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"][
                     selected_date.weekday()]
-                st.info(f"📅 **{selected_date.strftime('%d.%m.%Y')}**\n\n{weekday_name} (выходной)\n\n💰 Оплата: x1")
+                st.info(f"**{selected_date.strftime('%d.%m.%Y')}**\n\n{weekday_name} (выходной)\n\nОплата: x1")
             else:
-                st.info(f"📅 **{selected_date.strftime('%d.%m.%Y')}**\n\nРабочий день\n\n💰 Оплата: x1")
+                st.info(f"**{selected_date.strftime('%d.%m.%Y')}**\n\nРабочий день\n\nОплата: x1")
 
         with col2:
             if date_str in work_by_date:
-                st.success(f"✅ Работали: {len(work_by_date[date_str])} сотрудников")
+                st.success(f"Работали: {len(work_by_date[date_str])} сотрудников")
             else:
-                st.warning("❌ Нет отметок о работе")
+                st.warning("Нет отметок о работе")
 
         with col3:
             if is_holiday_selected and date_str in work_by_date:
-                st.success("🌟 Двойная оплата (праздничный день)!")
+                st.success("Двойная оплата (праздничный день)!")
 
         if date_str in work_by_date:
             st.markdown("---")
-            st.write("**👥 Сотрудники, работавшие в этот день:**")
+            st.write("**Сотрудники, работавшие в этот день:**")
             for emp in work_by_date[date_str]:
                 emp_data = st.session_state.employees[st.session_state.employees['name'] == emp]
                 if len(emp_data) > 0:
                     daily_rate = emp_data.iloc[0]['daily_rate']
                     if is_holiday_selected:
                         st.write(
-                            f"• {emp} ({emp_data.iloc[0]['role']}) - ставка: {daily_rate:,} ₽ → **{daily_rate * 2:,} ₽** (x2 - праздник)")
+                            f"- {emp} ({emp_data.iloc[0]['role']}) - ставка: {daily_rate:,} ₽ → **{daily_rate * 2:,} ₽** (x2 - праздник)")
                     else:
-                        st.write(f"• {emp} ({emp_data.iloc[0]['role']}) - ставка: {daily_rate:,} ₽")
+                        st.write(f"- {emp} ({emp_data.iloc[0]['role']}) - ставка: {daily_rate:,} ₽")
 
             day_records = st.session_state.work_days[st.session_state.work_days['date'] == date_str]
             if len(day_records) > 0:
-                st.write("**📝 Детали:**")
+                st.write("**Детали:**")
                 for _, record in day_records.iterrows():
                     multiplier = record.get('payment_multiplier', 1.0)
                     emp_data = st.session_state.employees[st.session_state.employees['name'] == record['employee']]
@@ -3038,13 +3129,13 @@ class RepairERP:
                             f"  - {record['employee']}: {record['hours_worked']} ч., оплата: **{payment:,.0f} ₽** (x{multiplier}), ремонты: {record['repair_ids'] if record['repair_ids'] else '—'}")
         else:
             if is_holiday_selected:
-                st.info(f"ℹ️ В {holiday_name_selected} никто не работал")
+                st.info(f"В {holiday_name_selected} никто не работал")
             else:
-                st.info(f"ℹ️ {selected_date.strftime('%d.%m.%Y')} - никто не работал")
+                st.info(f"{selected_date.strftime('%d.%m.%Y')} - никто не работал")
 
         st.markdown("---")
 
-        with st.expander("📋 Полный список отработанных дней"):
+        with st.expander("Полный список отработанных дней"):
             if len(st.session_state.work_days) > 0:
                 filtered_days = st.session_state.work_days.copy()
                 filtered_days = filtered_days.sort_values('date', ascending=False)
@@ -3052,14 +3143,14 @@ class RepairERP:
                 for idx, day in filtered_days.iterrows():
                     holiday_info = ""
                     if day.get('is_holiday', False):
-                        holiday_info = f" 🎉 ПРАЗДНИК (x{day.get('payment_multiplier', 1.0)})"
+                        holiday_info = f" ПРАЗДНИК (x{day.get('payment_multiplier', 1.0)})"
 
                     st.write(f"**{day['date']}** - {day['employee']} - {day['hours_worked']} ч.{holiday_info}")
                     if day.get('holiday_name'):
                         st.write(f"  Праздник: {day['holiday_name']}")
                     if day['repair_ids']:
                         st.write(f"  Ремонты: {day['repair_ids']}")
-                    if st.button(f"🗑️ Удалить", key=f"delete_day_{idx}"):
+                    if st.button(f"Удалить", key=f"delete_day_{idx}"):
                         if self.delete_work_day(idx):
                             st.success("Запись удалена!")
                             st.rerun()
@@ -3069,11 +3160,11 @@ class RepairERP:
 
         if len(st.session_state.work_days) > 0:
             st.markdown("---")
-            st.subheader("📊 Статистика работы в праздничные дни")
+            st.subheader("Статистика работы в праздничные дни")
 
             holiday_work = st.session_state.work_days[st.session_state.work_days['is_holiday'] == True]
             if len(holiday_work) > 0:
-                st.info(f"📈 Зафиксировано **{len(holiday_work)}** отработанных дней в праздники (оплата x2)")
+                st.info(f"Зафиксировано **{len(holiday_work)}** отработанных дней в праздники (оплата x2)")
 
                 holiday_stats = holiday_work.groupby('employee').size().reset_index(name='праздничных_дней')
                 holiday_stats = holiday_stats.merge(st.session_state.employees[['name', 'daily_rate']],
@@ -3097,9 +3188,11 @@ class RepairERP:
             else:
                 st.info("Нет отработанных дней в праздники")
 
+        st.markdown('</div>', unsafe_allow_html=True)
+
     def show_employee_kpi(self):
-        """KPI сотрудников"""
-        st.header("🏆 KPI сотрудников")
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("KPI сотрудников и рейтинг")
 
         if len(st.session_state.employees) > 0:
             col1, col2 = st.columns(2)
@@ -3128,75 +3221,179 @@ class RepairERP:
             else:
                 period_days = pd.DataFrame()
 
-            kpi_data = []
-            for _, emp in st.session_state.employees.iterrows():
-                emp_repairs = period_repairs[period_repairs['employees'].str.contains(emp['name'], na=False)] if len(
-                    period_repairs) > 0 else pd.DataFrame()
-                repairs_count = len(emp_repairs)
-                completed_count = len(emp_repairs[emp_repairs['status'] == 'Завершен']) if len(emp_repairs) > 0 else 0
+            tab_kpi, tab_rating = st.tabs(["KPI показатели", "Рейтинг сотрудников"])
 
-                emp_days = period_days[period_days['employee'] == emp['name']] if len(
-                    period_days) > 0 else pd.DataFrame()
-                days_worked = len(emp_days)
+            with tab_kpi:
+                kpi_data = []
+                for _, emp in st.session_state.employees.iterrows():
+                    emp_repairs = period_repairs[
+                        period_repairs['employees'].str.contains(emp['name'], na=False)] if len(
+                        period_repairs) > 0 else pd.DataFrame()
+                    repairs_count = len(emp_repairs)
+                    completed_count = len(emp_repairs[emp_repairs['status'] == 'Завершен']) if len(
+                        emp_repairs) > 0 else 0
 
-                fot = 0
-                holiday_days = 0
-                for _, day in emp_days.iterrows():
-                    multiplier = day.get('payment_multiplier', 1.0)
-                    fot += emp['daily_rate'] * multiplier
-                    if day.get('is_holiday', False):
-                        holiday_days += 1
+                    emp_days = period_days[period_days['employee'] == emp['name']] if len(
+                        period_days) > 0 else pd.DataFrame()
+                    days_worked = len(emp_days)
 
-                productivity = repairs_count / days_worked if days_worked > 0 else 0
-                total_work_days = 22
-                load_percent = (days_worked / total_work_days) * 100 if days_worked > 0 else 0
+                    fot = 0
+                    holiday_days = 0
+                    for _, day in emp_days.iterrows():
+                        multiplier = day.get('payment_multiplier', 1.0)
+                        fot += emp['daily_rate'] * multiplier
+                        if day.get('is_holiday', False):
+                            holiday_days += 1
 
-                kpi_data.append({
-                    'Сотрудник': emp['name'],
-                    'Роль': emp['role'],
-                    'Ремонтов': repairs_count,
-                    'Завершено': completed_count,
-                    'Отработано дней': days_worked,
-                    'В т.ч. праздничных': holiday_days,
-                    'Загрузка, %': round(load_percent, 1),
-                    'Производительность': f"{productivity:.2f} рем/день",
-                    'ФОТ, ₽': fot
-                })
+                    productivity = repairs_count / days_worked if days_worked > 0 else 0
+                    total_work_days = 22
+                    load_percent = (days_worked / total_work_days) * 100 if days_worked > 0 else 0
 
-            kpi_df = pd.DataFrame(kpi_data).sort_values('Ремонтов', ascending=False)
-            st.dataframe(kpi_df, use_container_width=True)
+                    kpi_data.append({
+                        'Сотрудник': emp['name'],
+                        'Роль': emp['role'],
+                        'Ремонтов': repairs_count,
+                        'Завершено': completed_count,
+                        'Отработано дней': days_worked,
+                        'В т.ч. праздничных': holiday_days,
+                        'Загрузка, %': round(load_percent, 1),
+                        'Производительность': f"{productivity:.2f} рем/день",
+                        'ФОТ, ₽': fot
+                    })
 
-            st.markdown("---")
-            st.subheader("📊 Визуализация")
+                kpi_df = pd.DataFrame(kpi_data).sort_values('Ремонтов', ascending=False)
+                st.dataframe(kpi_df, use_container_width=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                fig1 = px.bar(kpi_df, x='Сотрудник', y='Ремонтов', title='Количество ремонтов',
-                              color='Ремонтов', text='Ремонтов')
-                st.plotly_chart(fig1, use_container_width=True)
+                st.markdown("---")
+                st.subheader("Визуализация")
 
-            with col2:
-                fig2 = px.bar(kpi_df, x='Сотрудник', y='Отработано дней', title='Отработанные дни',
-                              color='Отработано дней', text='Отработано дней')
-                st.plotly_chart(fig2, use_container_width=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    fig1 = px.bar(kpi_df, x='Сотрудник', y='Ремонтов', title='Количество ремонтов',
+                                  color='Ремонтов', text='Ремонтов')
+                    st.plotly_chart(fig1, use_container_width=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                fig3 = px.bar(kpi_df, x='Сотрудник', y='Загрузка, %', title='Загрузка (%)',
-                              color='Загрузка, %', text='Загрузка, %')
-                st.plotly_chart(fig3, use_container_width=True)
+                with col2:
+                    fig2 = px.bar(kpi_df, x='Сотрудник', y='Отработано дней', title='Отработанные дни',
+                                  color='Отработано дней', text='Отработано дней')
+                    st.plotly_chart(fig2, use_container_width=True)
 
-            with col2:
-                fig4 = px.bar(kpi_df, x='Сотрудник', y='ФОТ, ₽', title='ФОТ',
-                              color='ФОТ, ₽', text='ФОТ, ₽')
-                st.plotly_chart(fig4, use_container_width=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    fig3 = px.bar(kpi_df, x='Сотрудник', y='Загрузка, %', title='Загрузка (%)',
+                                  color='Загрузка, %', text='Загрузка, %')
+                    st.plotly_chart(fig3, use_container_width=True)
 
-            if st.button("📥 Экспорт KPI в Excel", use_container_width=True):
+                with col2:
+                    fig4 = px.bar(kpi_df, x='Сотрудник', y='ФОТ, ₽', title='ФОТ',
+                                  color='ФОТ, ₽', text='ФОТ, ₽')
+                    st.plotly_chart(fig4, use_container_width=True)
+
+            with tab_rating:
+                st.subheader("Рейтинг сотрудников")
+
+                rating_data = []
+                for _, emp in st.session_state.employees.iterrows():
+                    emp_repairs = period_repairs[
+                        period_repairs['employees'].str.contains(emp['name'], na=False)] if len(
+                        period_repairs) > 0 else pd.DataFrame()
+                    repairs_count = len(emp_repairs)
+                    completed_count = len(emp_repairs[emp_repairs['status'] == 'Завершен']) if len(
+                        emp_repairs) > 0 else 0
+
+                    emp_days = period_days[period_days['employee'] == emp['name']] if len(
+                        period_days) > 0 else pd.DataFrame()
+                    days_worked = len(emp_days)
+
+                    productivity = repairs_count / days_worked if days_worked > 0 else 0
+                    completion_rate = (completed_count / repairs_count * 100) if repairs_count > 0 else 0
+
+                    productivity_score = min(productivity * 20, 40)
+                    completion_score = completion_rate * 0.4
+                    volume_score = min(repairs_count * 2, 20)
+
+                    total_rating = productivity_score + completion_score + volume_score
+
+                    if total_rating >= 85:
+                        level = "Эксперт"
+                        medal = "🥇"
+                    elif total_rating >= 70:
+                        level = "Профессионал"
+                        medal = "🥈"
+                    elif total_rating >= 50:
+                        level = "Стажёр"
+                        medal = "🥉"
+                    else:
+                        level = "Новичок"
+                        medal = "📈"
+
+                    rating_data.append({
+                        'Место': None,
+                        'Сотрудник': emp['name'],
+                        'Роль': emp['role'],
+                        'Ремонтов': repairs_count,
+                        'Завершено': completed_count,
+                        'Производительность': round(productivity, 2),
+                        'Завершение %': round(completion_rate, 1),
+                        'Рейтинг': round(total_rating, 1),
+                        'Уровень': f"{medal} {level}"
+                    })
+
+                rating_df = pd.DataFrame(rating_data).sort_values('Рейтинг', ascending=False).reset_index(drop=True)
+
+                for i in range(len(rating_df)):
+                    rating_df.loc[i, 'Место'] = i + 1
+
+                st.dataframe(rating_df, use_container_width=True)
+
+                col1, col2, col3 = st.columns(3)
+                if len(rating_df) >= 1:
+                    with col1:
+                        st.markdown(f"""
+                        <div style="text-align: center; background: linear-gradient(135deg, #FFD700, #FFA500); border-radius: 20px; padding: 20px;">
+                            <h1 style="margin: 0;">🥇</h1>
+                            <h3>{rating_df.iloc[0]['Сотрудник']}</h3>
+                            <p>Рейтинг: {rating_df.iloc[0]['Рейтинг']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                if len(rating_df) >= 2:
+                    with col2:
+                        st.markdown(f"""
+                        <div style="text-align: center; background: linear-gradient(135deg, #C0C0C0, #A8A8A8); border-radius: 20px; padding: 20px;">
+                            <h1 style="margin: 0;">🥈</h1>
+                            <h3>{rating_df.iloc[1]['Сотрудник']}</h3>
+                            <p>Рейтинг: {rating_df.iloc[1]['Рейтинг']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                if len(rating_df) >= 3:
+                    with col3:
+                        st.markdown(f"""
+                        <div style="text-align: center; background: linear-gradient(135deg, #CD7F32, #B87333); border-radius: 20px; padding: 20px;">
+                            <h1 style="margin: 0;">🥉</h1>
+                            <h3>{rating_df.iloc[2]['Сотрудник']}</h3>
+                            <p>Рейтинг: {rating_df.iloc[2]['Рейтинг']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                fig = px.bar(
+                    rating_df,
+                    x='Сотрудник',
+                    y='Рейтинг',
+                    title='Рейтинг сотрудников',
+                    text='Рейтинг',
+                    color='Рейтинг',
+                    color_continuous_scale='RdYlGn'
+                )
+                fig.update_traces(textposition='outside')
+                st.plotly_chart(fig, use_container_width=True)
+
+            if st.button("Экспорт KPI в Excel", use_container_width=True):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     kpi_df.to_excel(writer, sheet_name=f'KPI_{kpi_month:02d}_{kpi_year}', index=False)
+                    rating_df.to_excel(writer, sheet_name=f'Рейтинг_{kpi_month:02d}_{kpi_year}', index=False)
                 st.download_button(
-                    label="📥 Скачать Excel",
+                    label="Скачать Excel",
                     data=output.getvalue(),
                     file_name=f"kpi_{kpi_year}_{kpi_month:02d}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -3204,11 +3401,13 @@ class RepairERP:
         else:
             st.info("Нет данных о сотрудниках для расчета KPI")
 
-    def show_settings(self):
-        """Настройки с экспортом/импортом данных"""
-        st.header("⚙️ Настройки")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.subheader("📊 Статистика системы")
+    def show_settings(self):
+        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+        st.header("Настройки")
+
+        st.subheader("Статистика системы")
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Запчастей", len(st.session_state.spare_parts))
@@ -3219,16 +3418,16 @@ class RepairERP:
 
         st.markdown("---")
 
-        st.subheader("💾 Ручной экспорт/импорт данных")
-        st.info("🔐 Рекомендуется делать резервную копию перед обновлением кода")
+        st.subheader("Ручной экспорт/импорт данных")
+        st.info("Рекомендуется делать резервную копию перед обновлением кода")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("### 📤 Экспорт данных")
+            st.markdown("### Экспорт данных")
             st.write("Создает резервную копию всех данных в JSON файл")
 
-            if st.button("📥 Создать резервную копию", use_container_width=True, key="export_backup_btn"):
+            if st.button("Создать резервную копию", use_container_width=True, key="export_backup_btn"):
                 backup_data = {
                     'export_date': datetime.datetime.now().isoformat(),
                     'version': '1.0',
@@ -3237,6 +3436,7 @@ class RepairERP:
                     'employees': st.session_state.employees.to_dict('records'),
                     'repairs': st.session_state.repairs.to_dict('records'),
                     'work_days': st.session_state.work_days.to_dict('records'),
+                    'parts_movement': st.session_state.parts_movement.to_dict('records'),
                     'statistics': {
                         'total_repairs': len(st.session_state.repairs),
                         'total_employees': len(st.session_state.employees),
@@ -3251,17 +3451,17 @@ class RepairERP:
                 filename = f"erp_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
                 st.download_button(
-                    label="💾 Скачать резервную копию",
+                    label="Скачать резервную копию",
                     data=backup_json,
                     file_name=filename,
                     mime="application/json",
                     use_container_width=True,
                     key="download_backup_btn"
                 )
-                st.success("✅ Резервная копия создана! Нажмите кнопку выше для скачивания.")
+                st.success("Резервная копия создана! Нажмите кнопку выше для скачивания.")
 
         with col2:
-            st.markdown("### 📥 Импорт данных")
+            st.markdown("### Импорт данных")
             st.write("Восстанавливает данные из ранее созданной резервной копии")
 
             uploaded_file = st.file_uploader(
@@ -3273,53 +3473,56 @@ class RepairERP:
             if uploaded_file is not None:
                 try:
                     backup_data = json.load(uploaded_file)
-                    st.info(f"📁 Файл создан: {backup_data.get('export_date', 'Неизвестно')}")
-                    st.info(f"📊 Статистика в бэкапе: {backup_data.get('statistics', {})}")
+                    st.info(f"Файл создан: {backup_data.get('export_date', 'Неизвестно')}")
+                    st.info(f"Статистика в бэкапе: {backup_data.get('statistics', {})}")
 
                     col_confirm, col_cancel = st.columns(2)
                     with col_confirm:
-                        if st.button("⚠️ Восстановить данные", use_container_width=True, key="confirm_restore_btn"):
+                        if st.button("Восстановить данные", use_container_width=True, key="confirm_restore_btn"):
                             try:
                                 if 'spare_parts' in backup_data:
                                     st.session_state.spare_parts = pd.DataFrame(backup_data['spare_parts'])
-                                    st.success(f"✅ Восстановлено {len(backup_data['spare_parts'])} запчастей")
+                                    st.success(f"Восстановлено {len(backup_data['spare_parts'])} запчастей")
                                 if 'works' in backup_data:
                                     st.session_state.works = pd.DataFrame(backup_data['works'])
-                                    st.success(f"✅ Восстановлено {len(backup_data['works'])} видов работ")
+                                    st.success(f"Восстановлено {len(backup_data['works'])} видов работ")
                                 if 'employees' in backup_data:
                                     st.session_state.employees = pd.DataFrame(backup_data['employees'])
-                                    st.success(f"✅ Восстановлено {len(backup_data['employees'])} сотрудников")
+                                    st.success(f"Восстановлено {len(backup_data['employees'])} сотрудников")
                                 if 'repairs' in backup_data:
                                     st.session_state.repairs = pd.DataFrame(backup_data['repairs'])
-                                    st.success(f"✅ Восстановлено {len(backup_data['repairs'])} ремонтов")
+                                    st.success(f"Восстановлено {len(backup_data['repairs'])} ремонтов")
                                 if 'work_days' in backup_data:
                                     st.session_state.work_days = pd.DataFrame(backup_data['work_days'])
-                                    st.success(f"✅ Восстановлено {len(backup_data['work_days'])} рабочих дней")
+                                    st.success(f"Восстановлено {len(backup_data['work_days'])} рабочих дней")
+                                if 'parts_movement' in backup_data:
+                                    st.session_state.parts_movement = pd.DataFrame(backup_data['parts_movement'])
+                                    st.success(f"Восстановлено {len(backup_data['parts_movement'])} движений")
                                 self.save_all()
-                                st.success("🎉 Данные успешно восстановлены! Страница будет перезагружена.")
+                                st.success("Данные успешно восстановлены! Страница будет перезагружена.")
                                 st.balloons()
                                 time.sleep(2)
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"❌ Ошибка при восстановлении: {e}")
+                                st.error(f"Ошибка при восстановлении: {e}")
                     with col_cancel:
-                        if st.button("❌ Отмена", use_container_width=True, key="cancel_restore_btn"):
+                        if st.button("Отмена", use_container_width=True, key="cancel_restore_btn"):
                             st.info("Восстановление отменено")
                             st.rerun()
                 except json.JSONDecodeError:
-                    st.error("❌ Ошибка: выбранный файл не является корректной резервной копией")
+                    st.error("Ошибка: выбранный файл не является корректной резервной копией")
                 except Exception as e:
-                    st.error(f"❌ Ошибка при чтении файла: {e}")
+                    st.error(f"Ошибка при чтении файла: {e}")
 
         st.markdown("---")
-        st.subheader("🔄 Автоматическое резервное копирование")
-        st.info("💡 Совет: Регулярно создавайте резервные копии перед важными изменениями")
-        st.caption("📌 Рекомендуется хранить резервные копии в надежном месте (облако, внешний диск)")
+        st.subheader("Автоматическое резервное копирование")
+        st.info("Совет: Регулярно создавайте резервные копии перед важными изменениями")
+        st.caption("Рекомендуется хранить резервные копии в надежном месте (облако, внешний диск)")
 
         st.markdown("---")
 
-        st.subheader("📤 Экспорт всех данных в Excel")
-        if st.button("📥 Экспорт всех данных в Excel", use_container_width=True):
+        st.subheader("Экспорт всех данных в Excel")
+        if st.button("Экспорт всех данных в Excel", use_container_width=True):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 st.session_state.spare_parts.to_excel(writer, sheet_name='Запчасти', index=False)
@@ -3327,22 +3530,22 @@ class RepairERP:
                 st.session_state.employees.to_excel(writer, sheet_name='Сотрудники', index=False)
                 st.session_state.repairs.to_excel(writer, sheet_name='Ремонты', index=False)
                 st.session_state.work_days.to_excel(writer, sheet_name='Рабочие дни', index=False)
+                st.session_state.parts_movement.to_excel(writer, sheet_name='История движений', index=False)
 
             st.download_button(
-                label="📥 Скачать Excel файл",
+                label="Скачать Excel файл",
                 data=output.getvalue(),
                 file_name=f"erp_backup_{datetime.date.today()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
         st.markdown("---")
-        st.subheader("🗑️ Очистка данных")
+        st.subheader("Очистка данных")
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🧹 Очистить все ремонты", use_container_width=True):
-                st.warning(
-                    "⚠️ ВНИМАНИЕ! Это действие необратимо. Рекомендуется сделать резервную копию перед очисткой.")
+            if st.button("Очистить все ремонты", use_container_width=True):
+                st.warning("ВНИМАНИЕ! Это действие необратимо. Рекомендуется сделать резервную копию перед очисткой.")
                 confirm = st.checkbox("Я понимаю, что все ремонты будут удалены безвозвратно")
                 if confirm:
                     st.session_state.repairs = pd.DataFrame(columns=st.session_state.repairs.columns)
@@ -3351,18 +3554,68 @@ class RepairERP:
                     st.rerun()
 
         with col2:
-            if st.button("🔄 Сбросить все данные", use_container_width=True):
-                st.error("⚠️ ОПАСНО! Это удалит ВСЕ данные без возможности восстановления!")
+            if st.button("Сбросить все данные", use_container_width=True):
+                st.error("ОПАСНО! Это удалит ВСЕ данные без возможности восстановления!")
                 confirm = st.checkbox("Я понимаю, что все данные будут безвозвратно удалены")
                 confirm2 = st.text_input("Введите 'СБРОСИТЬ' для подтверждения")
                 if confirm and confirm2 == "СБРОСИТЬ":
-                    for key in ['spare_parts', 'works', 'employees', 'repairs', 'work_days']:
+                    for key in ['spare_parts', 'works', 'employees', 'repairs', 'work_days', 'parts_movement']:
                         if key in st.session_state:
                             del st.session_state[key]
                     self.init_session_state()
                     self.save_all()
                     st.success("Все данные сброшены!")
                     st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    def run(self):
+        """Запуск приложения"""
+        st.markdown("""
+        <div class="crm-header">
+            <h1>CRM Ремонтный цех PRO</h1>
+            <p>Управление ремонтами электровелосипедов</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.sidebar:
+            st.markdown("### Навигация")
+
+            menu = st.radio(
+                "",
+                ["Дашборд", "Ремонты", "Сотрудники", "Склад",
+                 "Работы", "Аналитика", "Отчеты", "Отработанные дни",
+                 "KPI сотрудников", "Настройки"],
+                index=0,
+                label_visibility="collapsed"
+            )
+
+            st.markdown("---")
+
+            if st.button("Сохранить все данные", use_container_width=True):
+                if self.save_all():
+                    st.success("Данные сохранены!")
+
+        if menu == "Дашборд":
+            self.show_dashboard()
+        elif menu == "Ремонты":
+            self.show_repairs()
+        elif menu == "Сотрудники":
+            self.show_employees()
+        elif menu == "Склад":
+            self.show_warehouse()
+        elif menu == "Работы":
+            self.show_works_management_simple()
+        elif menu == "Аналитика":
+            self.show_analytics()
+        elif menu == "Отчеты":
+            self.show_reports()
+        elif menu == "Отработанные дни":
+            self.show_work_days()
+        elif menu == "KPI сотрудников":
+            self.show_employee_kpi()
+        elif menu == "Настройки":
+            self.show_settings()
 
 
 # ==================== ЗАПУСК ====================
