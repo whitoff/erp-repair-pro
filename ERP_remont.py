@@ -139,9 +139,9 @@ st.markdown("""
         color: white !important;
     }
 
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3, 
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
     [data-testid="stSidebar"] p {
         color: white !important;
     }
@@ -381,6 +381,106 @@ class ExportManager:
             }])
             info_df.to_excel(writer, sheet_name='Информация', index=False)
         return output.getvalue()
+
+
+# ==================== ФУНКЦИИ ДЛЯ MTBF ====================
+def calculate_mtbf(repairs_df):
+    """
+    Расчет MTBF (Mean Time Between Failures)
+    Возвращает словарь с показателями MTBF для каждого устройства
+    """
+    if len(repairs_df) == 0:
+        return {
+            'mtbf_days': 0,
+            'mtbf_hours': 0,
+            'total_failures': 0,
+            'unique_devices': 0,
+            'avg_time_between_failures': 0
+        }
+
+    # Копируем данные и сортируем по дате
+    df = repairs_df[repairs_df['status'] == 'Завершен'].copy()
+    if len(df) == 0:
+        return {
+            'mtbf_days': 0,
+            'mtbf_hours': 0,
+            'total_failures': 0,
+            'unique_devices': 0,
+            'avg_time_between_failures': 0
+        }
+
+    df['date_dt'] = pd.to_datetime(df['date_receipt'])
+    df = df.sort_values('date_dt')
+
+    # Группируем по устройствам (госномерам)
+    device_failures = {}
+    for gos_number, group in df.groupby('gos_number'):
+        if len(group) > 1:
+            # Вычисляем интервалы между отказами для одного устройства
+            dates = group['date_dt'].tolist()
+            intervals = []
+            for i in range(1, len(dates)):
+                interval = (dates[i] - dates[i - 1]).total_seconds() / 3600  # в часах
+                intervals.append(interval)
+            if intervals:
+                device_failures[gos_number] = {
+                    'failures_count': len(dates),
+                    'intervals_hours': intervals,
+                    'avg_interval_hours': sum(intervals) / len(intervals)
+                }
+
+    # Общий MTBF по всем устройствам
+    all_intervals = []
+    for device, data in device_failures.items():
+        all_intervals.extend(data['intervals_hours'])
+
+    if all_intervals:
+        avg_interval_hours = sum(all_intervals) / len(all_intervals)
+        return {
+            'mtbf_days': round(avg_interval_hours / 24, 1),
+            'mtbf_hours': round(avg_interval_hours, 1),
+            'total_failures': len(df),
+            'unique_devices': len(df['gos_number'].unique()),
+            'devices_with_multiple_failures': len(device_failures),
+            'avg_time_between_failures': round(avg_interval_hours / 24, 1),
+            'device_details': device_failures
+        }
+
+    return {
+        'mtbf_days': 0,
+        'mtbf_hours': 0,
+        'total_failures': len(df),
+        'unique_devices': len(df['gos_number'].unique()),
+        'devices_with_multiple_failures': 0,
+        'avg_time_between_failures': 0,
+        'device_details': {}
+    }
+
+
+def get_warranty_stats(repairs_df):
+    """
+    Статистика по гарантийным ремонтам
+    """
+    if len(repairs_df) == 0:
+        return {
+            'total_warranty': 0,
+            'warranty_percentage': 0,
+            'warranty_by_device': {}
+        }
+
+    warranty_repairs = repairs_df[repairs_df['repair_type'] == 'Гарантийный ремонт']
+    total_warranty = len(warranty_repairs)
+    total_repairs = len(repairs_df)
+
+    warranty_percentage = (total_warranty / total_repairs * 100) if total_repairs > 0 else 0
+
+    warranty_by_device = warranty_repairs['gos_number'].value_counts().to_dict()
+
+    return {
+        'total_warranty': total_warranty,
+        'warranty_percentage': round(warranty_percentage, 1),
+        'warranty_by_device': warranty_by_device
+    }
 
 
 # ==================== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====================
@@ -1137,11 +1237,120 @@ class RepairERP:
             st.info(
                 f"📈 **Прогноз на следующий месяц:** {seasonal_forecast['next_month_forecast']} ремонтов (среднее в текущем: {seasonal_forecast['current_month_avg']})")
 
+    def show_mtbf_analytics(self):
+        """Отображение MTBF аналитики"""
+        st.markdown("### 📊 MTBF - Mean Time Between Failures")
+        st.markdown("Среднее время между отказами (надежность оборудования)")
+
+        mtbf_data = calculate_mtbf(st.session_state.repairs)
+        warranty_data = get_warranty_stats(st.session_state.repairs)
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #e0e7ff; color: #4f46e5;">⏱️</div>
+                <div class="metric-value">{mtbf_data['mtbf_days']} дн.</div>
+                <div class="metric-label">MTBF (дней)</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #d1fae5; color: #10b981;">🔄</div>
+                <div class="metric-value">{mtbf_data['mtbf_hours']} ч.</div>
+                <div class="metric-label">MTBF (часов)</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #fed7aa; color: #f59e0b;">🔧</div>
+                <div class="metric-value">{mtbf_data['total_failures']}</div>
+                <div class="metric-label">Всего отказов</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card-modern">
+                <div class="metric-icon" style="background: #fee2e2; color: #ef4444;">🛡️</div>
+                <div class="metric-value">{warranty_data['warranty_percentage']}%</div>
+                <div class="metric-label">Гарантийных ремонтов</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Детальная информация по устройствам
+        if mtbf_data['devices_with_multiple_failures'] > 0:
+            st.subheader("📋 Детализация по устройствам")
+            st.info(f"Устройства с повторными обращениями: {mtbf_data['devices_with_multiple_failures']}")
+
+            device_data = []
+            for gos_number, data in mtbf_data['device_details'].items():
+                device_data.append({
+                    'Госномер': gos_number,
+                    'Количество отказов': data['failures_count'],
+                    'Средний интервал (дни)': round(data['avg_interval_hours'] / 24, 1),
+                    'Средний интервал (часы)': round(data['avg_interval_hours'], 1)
+                })
+
+            if device_data:
+                device_df = pd.DataFrame(device_data).sort_values('Количество отказов', ascending=False)
+                st.dataframe(device_df, use_container_width=True)
+
+                fig = px.bar(
+                    device_df,
+                    x='Госномер',
+                    y='Средний интервал (дни)',
+                    title='Среднее время между отказами по устройствам (дни)',
+                    color='Средний интервал (дни)',
+                    text='Средний интервал (дни)'
+                )
+                fig.update_traces(textposition='outside')
+                st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.info("Нет данных для расчета MTBF (требуется минимум 2 обращения одного устройства)")
+
+        # График надежности
+        if len(st.session_state.repairs) > 0:
+            st.subheader("📈 Тренд надежности")
+
+            repairs = st.session_state.repairs.copy()
+            repairs['date_dt'] = pd.to_datetime(repairs['date_receipt'])
+            repairs = repairs.sort_values('date_dt')
+
+            # Группировка по месяцам
+            repairs['month'] = repairs['date_dt'].dt.to_period('M')
+            monthly_failures = repairs.groupby('month').size().reset_index(name='failures')
+            monthly_failures['month_str'] = monthly_failures['month'].astype(str)
+
+            fig = px.line(
+                monthly_failures,
+                x='month_str',
+                y='failures',
+                title='Динамика отказов по месяцам',
+                markers=True,
+                labels={'month_str': 'Месяц', 'failures': 'Количество отказов'}
+            )
+            fig.update_traces(line=dict(color='#ef4444', width=3))
+            st.plotly_chart(fig, use_container_width=True)
+
     def show_dashboard(self):
         st.markdown('<div class="fade-in">', unsafe_allow_html=True)
 
         # Показываем уведомления
         self.show_notifications()
+
+        # Показываем MTBF аналитику
+        self.show_mtbf_analytics()
+
+        st.markdown("---")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1230,7 +1439,6 @@ class RepairERP:
                     st.plotly_chart(fig, use_container_width=True)
 
             with col2:
-                # Удален график приоритетов, так как приоритет удален
                 st.info("Выберите период для отображения статистики")
         else:
             st.info("Нет данных для отображения за выбранный период")
@@ -1260,8 +1468,10 @@ class RepairERP:
 
                 with col1:
                     gos_number = st.text_input("Госномер *", placeholder="РА201С")
+                    # Добавлен тип ремонта "Гарантийный ремонт"
                     repair_type = st.selectbox("Тип ремонта",
-                                               ["Закрытие аренды", "ТО", "Механическое повреждение"])
+                                               ["Закрытие аренды", "ТО", "Механическое повреждение",
+                                                "Гарантийный ремонт"])
                     employees = st.multiselect("Исполнители *", st.session_state.employees['name'].tolist())
                     tags = st.multiselect("Теги", ["Закрытие", "Срочный", "Гарантийный"])
 
@@ -1465,9 +1675,10 @@ class RepairERP:
                                                                    key=f"edit_gos_{repair_id}")
                                     new_repair_type = st.selectbox("Тип ремонта",
                                                                    ["Закрытие аренды", "ТО",
-                                                                    "Механическое повреждение"],
+                                                                    "Механическое повреждение", "Гарантийный ремонт"],
                                                                    index=["Закрытие аренды", "ТО",
-                                                                          "Механическое повреждение"].index(
+                                                                          "Механическое повреждение",
+                                                                          "Гарантийный ремонт"].index(
                                                                        repair['repair_type']),
                                                                    key=f"edit_type_{repair_id}")
 
@@ -1679,8 +1890,9 @@ class RepairERP:
                                                              key=f"history_edit_gos_{repair_id}")
                                     edit_repair_type = st.selectbox(
                                         "Тип ремонта",
-                                        ["Закрытие аренды", "ТО", "Механическое повреждение"],
-                                        index=["Закрытие аренды", "ТО", "Механическое повреждение"].index(
+                                        ["Закрытие аренды", "ТО", "Механическое повреждение", "Гарантийный ремонт"],
+                                        index=["Закрытие аренды", "ТО", "Механическое повреждение",
+                                               "Гарантийный ремонт"].index(
                                             repair['repair_type']),
                                         key=f"history_edit_type_{repair_id}"
                                     )
@@ -1808,14 +2020,14 @@ class RepairERP:
                                                     ].index
                                                 if len(part_idx) > 0:
                                                     st.session_state.spare_parts.loc[part_idx[0], 'stock'] -= (
-                                                                new_qty - old_qty)
+                                                            new_qty - old_qty)
                                             elif new_qty < old_qty:
                                                 part_idx = st.session_state.spare_parts[
                                                     st.session_state.spare_parts['name'] == name
                                                     ].index
                                                 if len(part_idx) > 0:
                                                     st.session_state.spare_parts.loc[part_idx[0], 'stock'] += (
-                                                                old_qty - new_qty)
+                                                            old_qty - new_qty)
 
                                         for name, old_qty in old_parts_dict.items():
                                             if name not in new_parts_dict:
