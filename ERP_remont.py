@@ -1460,6 +1460,15 @@ class RepairERP:
         st.markdown('<div class="fade-in">', unsafe_allow_html=True)
         st.header("Управление ремонтами")
 
+        # Список типов ремонтов
+        repair_types = ["Закрытие аренды", "ТО", "Механическое повреждение", "Гарантийный ремонт"]
+
+        # Причины ремонтов
+        failure_reasons = ["Износ", "Брак", "Закрытие аренды", "По вине клиента"]
+
+        # Теги
+        tags_options = ["Закрытие", "Срочный", "Гарантийный"]
+
         tab1, tab2, tab3 = st.tabs(["Новый ремонт", "Активные ремонты", "История"])
 
         with tab1:
@@ -1468,16 +1477,12 @@ class RepairERP:
 
                 with col1:
                     gos_number = st.text_input("Госномер *", placeholder="РА201С")
-                    # Добавлен тип ремонта "Гарантийный ремонт"
-                    repair_type = st.selectbox("Тип ремонта",
-                                               ["Закрытие аренды", "ТО", "Механическое повреждение",
-                                                "Гарантийный ремонт"])
+                    repair_type = st.selectbox("Тип ремонта", repair_types)
                     employees = st.multiselect("Исполнители *", st.session_state.employees['name'].tolist())
-                    tags = st.multiselect("Теги", ["Закрытие", "Срочный", "Гарантийный"])
+                    tags = st.multiselect("Теги", tags_options)
 
                 with col2:
-                    failure_reason = st.selectbox("Причина",
-                                                  ["Износ", "Брак", "Закрытие аренды", "По вине клиента"])
+                    failure_reason = st.selectbox("Причина", failure_reasons)
                     works_options = st.session_state.works['name'].tolist()
                     works = st.multiselect("Выполняемые работы", works_options)
                     comment = st.text_area("Комментарий", height=100)
@@ -1673,13 +1678,13 @@ class RepairERP:
                                 with col1:
                                     new_gos_number = st.text_input("Госномер", value=repair['gos_number'],
                                                                    key=f"edit_gos_{repair_id}")
-                                    new_repair_type = st.selectbox("Тип ремонта",
-                                                                   ["Закрытие аренды", "ТО",
-                                                                    "Механическое повреждение", "Гарантийный ремонт"],
-                                                                   index=["Закрытие аренды", "ТО",
-                                                                          "Механическое повреждение",
-                                                                          "Гарантийный ремонт"].index(
-                                                                       repair['repair_type']),
+                                    # Безопасное получение индекса для repair_type
+                                    try:
+                                        repair_type_index = repair_types.index(repair['repair_type'])
+                                    except ValueError:
+                                        repair_type_index = 0
+                                    new_repair_type = st.selectbox("Тип ремонта", repair_types,
+                                                                   index=repair_type_index,
                                                                    key=f"edit_type_{repair_id}")
 
                                 with col2:
@@ -1690,17 +1695,15 @@ class RepairERP:
                                                                    default=[e for e in current_employees if
                                                                             e in employees_list],
                                                                    key=f"edit_employees_{repair_id}")
-
-                                    new_failure_reason = st.selectbox("Причина",
-                                                                      ["Износ", "Брак", "Закрытие аренды",
-                                                                       "По вине клиента"],
-                                                                      index=["Износ", "Брак",
-                                                                             "Закрытие аренды",
-                                                                             "По вине клиента"].index(
-                                                                          repair['failure_reason']),
+                                    # Безопасное получение индекса для failure_reason
+                                    try:
+                                        reason_index = failure_reasons.index(repair['failure_reason'])
+                                    except ValueError:
+                                        reason_index = 0
+                                    new_failure_reason = st.selectbox("Причина", failure_reasons,
+                                                                      index=reason_index,
                                                                       key=f"edit_reason_{repair_id}")
 
-                                tags_options = ["Закрытие", "Срочный", "Гарантийный"]
                                 current_tags = [t.strip() for t in repair.get('tags', '').split(',')] if repair.get(
                                     'tags') else []
                                 new_tags = st.multiselect("Теги", tags_options,
@@ -1888,14 +1891,14 @@ class RepairERP:
                                 with col1:
                                     edit_gos = st.text_input("Госномер", value=repair['gos_number'],
                                                              key=f"history_edit_gos_{repair_id}")
-                                    edit_repair_type = st.selectbox(
-                                        "Тип ремонта",
-                                        ["Закрытие аренды", "ТО", "Механическое повреждение", "Гарантийный ремонт"],
-                                        index=["Закрытие аренды", "ТО", "Механическое повреждение",
-                                               "Гарантийный ремонт"].index(
-                                            repair['repair_type']),
-                                        key=f"history_edit_type_{repair_id}"
-                                    )
+                                    # Безопасное получение индекса для repair_type
+                                    try:
+                                        repair_type_index = repair_types.index(repair['repair_type'])
+                                    except ValueError:
+                                        repair_type_index = 0
+                                    edit_repair_type = st.selectbox("Тип ремонта", repair_types,
+                                                                    index=repair_type_index,
+                                                                    key=f"history_edit_type_{repair_id}")
 
                                 with col2:
                                     employees_list = st.session_state.employees['name'].tolist()
@@ -1907,29 +1910,24 @@ class RepairERP:
                                         default=[e for e in current_employees if e in employees_list],
                                         key=f"history_edit_employees_{repair_id}"
                                     )
-                                    edit_failure_reason = st.selectbox(
-                                        "Причина",
-                                        ["Износ", "Брак", "Закрытие аренды", "По вине клиента"],
-                                        index=["Износ", "Брак", "Закрытие аренды", "По вине клиента"].index(
-                                            repair['failure_reason']),
-                                        key=f"history_edit_reason_{repair_id}"
-                                    )
+                                    # Безопасное получение индекса для failure_reason
+                                    try:
+                                        reason_index = failure_reasons.index(repair['failure_reason'])
+                                    except ValueError:
+                                        reason_index = 0
+                                    edit_failure_reason = st.selectbox("Причина", failure_reasons,
+                                                                       index=reason_index,
+                                                                       key=f"history_edit_reason_{repair_id}")
 
-                                tags_options = ["Закрытие", "Срочный", "Гарантийный"]
                                 current_tags = [t.strip() for t in repair.get('tags', '').split(',')] if repair.get(
                                     'tags') else []
-                                edit_tags = st.multiselect(
-                                    "Теги",
-                                    tags_options,
-                                    default=[t for t in current_tags if t in tags_options],
-                                    key=f"history_edit_tags_{repair_id}"
-                                )
+                                edit_tags = st.multiselect("Теги", tags_options,
+                                                           default=[t for t in current_tags if t in tags_options],
+                                                           key=f"history_edit_tags_{repair_id}")
 
-                                edit_comment = st.text_area(
-                                    "Комментарий",
-                                    value=repair['comment'] if repair['comment'] else "",
-                                    key=f"history_edit_comment_{repair_id}"
-                                )
+                                edit_comment = st.text_area("Комментарий",
+                                                            value=repair['comment'] if repair['comment'] else "",
+                                                            key=f"history_edit_comment_{repair_id}")
 
                                 st.markdown("---")
                                 st.subheader("Работы")
@@ -1937,12 +1935,9 @@ class RepairERP:
                                 current_works = [w.strip() for w in repair['works'].split(',')] if repair[
                                     'works'] else []
                                 works_options = st.session_state.works['name'].tolist()
-                                edit_works = st.multiselect(
-                                    "Список работ",
-                                    works_options,
-                                    default=[w for w in current_works if w in works_options],
-                                    key=f"history_edit_works_{repair_id}"
-                                )
+                                edit_works = st.multiselect("Список работ", works_options,
+                                                            default=[w for w in current_works if w in works_options],
+                                                            key=f"history_edit_works_{repair_id}")
 
                                 st.markdown("---")
                                 st.subheader("Запчасти")
