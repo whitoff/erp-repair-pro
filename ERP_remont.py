@@ -1489,15 +1489,15 @@ class RepairERP:
 
                 st.subheader("Запчасти")
                 parts_options = st.session_state.spare_parts['name'].tolist()
-                num_parts = st.number_input("Количество запчастей", 0, 10, 0, key="num_parts")
+                num_parts = st.number_input("Количество запчастей", 0, 10, 0, key="num_parts_new")
 
                 parts = []
                 for i in range(num_parts):
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        part = st.selectbox(f"Запчасть {i + 1}", [""] + parts_options, key=f"part_{i}")
+                        part = st.selectbox(f"Запчасть {i + 1}", [""] + parts_options, key=f"new_part_{i}")
                     with col2:
-                        qty = st.number_input(f"Кол-во", 1, 100, 1, key=f"qty_{i}")
+                        qty = st.number_input(f"Кол-во", 1, 100, 1, key=f"new_qty_{i}")
                     if part:
                         parts.append((part, qty))
 
@@ -1529,6 +1529,7 @@ class RepairERP:
                     for idx, repair in active.iterrows():
                         repair_id = repair['id']
 
+                        # Инициализация состояний
                         if f"edit_{repair_id}" not in st.session_state:
                             st.session_state[f"edit_{repair_id}"] = False
                         if f"add_work_{repair_id}" not in st.session_state:
@@ -1553,19 +1554,20 @@ class RepairERP:
                                 st.subheader("Выполняемые работы")
                                 if repair['works'] and repair['works'] != '':
                                     works_list = [w.strip() for w in repair['works'].split(',') if w.strip()]
-                                    for work in works_list:
+                                    for work_idx, work in enumerate(works_list):
                                         col1, col2 = st.columns([4, 1])
                                         with col1:
                                             st.write(f"- {work}")
                                         with col2:
-                                            if st.button(f"Удалить", key=f"remove_work_{repair_id}_{work}"):
+                                            if st.button(f"🗑️",
+                                                         key=f"remove_work_{repair_id}_{work_idx}_{work.replace(' ', '_')}"):
                                                 if self.remove_work_from_repair(repair_id, work):
                                                     st.success(f"Работа '{work}' удалена!")
                                                     st.rerun()
                                 else:
                                     st.write("Нет добавленных работ")
 
-                                if st.button(f"Добавить работу", key=f"add_work_btn_{repair_id}",
+                                if st.button(f"➕ Добавить работу", key=f"add_work_btn_{repair_id}",
                                              use_container_width=True):
                                     st.session_state[f"add_work_{repair_id}"] = True
                                     st.rerun()
@@ -1574,21 +1576,24 @@ class RepairERP:
                                 st.subheader("Используемые запчасти")
                                 if repair['parts'] and repair['parts'] != '':
                                     parts_list = self.parse_parts_list(repair['parts'])
-                                    for part_name, qty in parts_list:
+                                    for part_idx, (part_name, qty) in enumerate(parts_list):
                                         col1, col2, col3 = st.columns([3, 1, 1])
                                         with col1:
                                             st.write(f"- {part_name}")
                                         with col2:
                                             st.write(f"x{qty}")
                                         with col3:
-                                            if st.button(f"Удалить", key=f"remove_part_{repair_id}_{part_name}"):
+                                            safe_part_name = part_name.replace(' ', '_').replace('(', '').replace(')',
+                                                                                                                  '')
+                                            if st.button(f"🗑️",
+                                                         key=f"remove_part_{repair_id}_{part_idx}_{safe_part_name}"):
                                                 if self.remove_part_from_repair(repair_id, part_name, qty):
                                                     st.success(f"Запчасть '{part_name}' удалена!")
                                                     st.rerun()
                                 else:
                                     st.write("Нет добавленных запчастей")
 
-                                if st.button(f"Добавить запчасть", key=f"add_part_btn_{repair_id}",
+                                if st.button(f"➕ Добавить запчасть", key=f"add_part_btn_{repair_id}",
                                              use_container_width=True):
                                     st.session_state[f"add_part_{repair_id}"] = True
                                     st.rerun()
@@ -1601,19 +1606,19 @@ class RepairERP:
                                 col1, col2, col3 = st.columns(3)
 
                                 with col1:
-                                    if st.button(f"Редактировать", key=f"edit_btn_{repair_id}",
+                                    if st.button(f"✏️ Редактировать", key=f"edit_btn_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"edit_{repair_id}"] = True
                                         st.rerun()
 
                                 with col2:
-                                    if st.button(f"Завершить", key=f"complete_{repair_id}", use_container_width=True):
+                                    if st.button(f"✅ Завершить", key=f"complete_{repair_id}", use_container_width=True):
                                         if self.complete_repair(repair_id):
                                             st.success("Ремонт завершен!")
                                             st.rerun()
 
                                 with col3:
-                                    if st.button(f"Удалить", key=f"delete_{repair_id}", use_container_width=True):
+                                    if st.button(f"🗑️ Удалить", key=f"delete_{repair_id}", use_container_width=True):
                                         if self.delete_repair(repair_id):
                                             st.success("Ремонт удален!")
                                             st.rerun()
@@ -1627,14 +1632,14 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("Добавить", key=f"confirm_add_work_{repair_id}",
+                                    if st.button("✅ Добавить", key=f"confirm_add_work_{repair_id}",
                                                  use_container_width=True):
                                         if self.add_work_to_repair(repair_id, new_work):
                                             st.success(f"Работа '{new_work}' добавлена!")
                                             st.session_state[f"add_work_{repair_id}"] = False
                                             st.rerun()
                                 with col2:
-                                    if st.button("Отмена", key=f"cancel_add_work_{repair_id}",
+                                    if st.button("❌ Отмена", key=f"cancel_add_work_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"add_work_{repair_id}"] = False
                                         st.rerun()
@@ -1652,7 +1657,7 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("Добавить", key=f"confirm_add_part_{repair_id}",
+                                    if st.button("✅ Добавить", key=f"confirm_add_part_{repair_id}",
                                                  use_container_width=True):
                                         part_stock = st.session_state.spare_parts[
                                             st.session_state.spare_parts['name'] == new_part
@@ -1666,19 +1671,18 @@ class RepairERP:
                                         else:
                                             st.error(f"Недостаточно запчастей! На складе: {part_stock} шт.")
                                 with col2:
-                                    if st.button("Отмена", key=f"cancel_add_part_{repair_id}",
+                                    if st.button("❌ Отмена", key=f"cancel_add_part_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"add_part_{repair_id}"] = False
                                         st.rerun()
 
                             else:
-                                st.subheader("Редактирование ремонта")
+                                st.subheader("✏️ Редактирование ремонта")
 
                                 col1, col2 = st.columns(2)
                                 with col1:
                                     new_gos_number = st.text_input("Госномер", value=repair['gos_number'],
                                                                    key=f"edit_gos_{repair_id}")
-                                    # Безопасное получение индекса для repair_type
                                     try:
                                         repair_type_index = repair_types.index(repair['repair_type'])
                                     except ValueError:
@@ -1695,7 +1699,6 @@ class RepairERP:
                                                                    default=[e for e in current_employees if
                                                                             e in employees_list],
                                                                    key=f"edit_employees_{repair_id}")
-                                    # Безопасное получение индекса для failure_reason
                                     try:
                                         reason_index = failure_reasons.index(repair['failure_reason'])
                                     except ValueError:
@@ -1765,7 +1768,7 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("Сохранить изменения", key=f"save_edit_{repair_id}",
+                                    if st.button("💾 Сохранить изменения", key=f"save_edit_{repair_id}",
                                                  use_container_width=True):
                                         updated_data = {
                                             'gos_number': new_gos_number,
@@ -1812,7 +1815,7 @@ class RepairERP:
                                             st.rerun()
 
                                 with col2:
-                                    if st.button("Отмена", key=f"cancel_edit_{repair_id}", use_container_width=True):
+                                    if st.button("❌ Отмена", key=f"cancel_edit_{repair_id}", use_container_width=True):
                                         st.session_state[f"edit_{repair_id}"] = False
                                         st.rerun()
                 else:
@@ -1823,7 +1826,7 @@ class RepairERP:
         with tab3:
             st.subheader("История завершенных ремонтов")
 
-            search_gos = st.text_input("Фильтр по госномеру", placeholder="Введите номер...")
+            search_gos = st.text_input("Фильтр по госномеру", placeholder="Введите номер...", key="history_search")
 
             if len(st.session_state.repairs) > 0:
                 completed = st.session_state.repairs[
@@ -1834,7 +1837,7 @@ class RepairERP:
                     completed = completed[completed['gos_number'].str.contains(search_gos, case=False, na=False)]
 
                 if len(completed) > 0:
-                    for idx, repair in completed.iterrows():
+                    for hist_idx, repair in completed.iterrows():
                         repair_id = repair['id']
 
                         if f"history_edit_{repair_id}" not in st.session_state:
@@ -1860,13 +1863,13 @@ class RepairERP:
                                 col1, col2, col3 = st.columns(3)
 
                                 with col1:
-                                    if st.button(f"Редактировать", key=f"history_edit_btn_{repair_id}",
+                                    if st.button(f"✏️ Редактировать", key=f"history_edit_btn_{repair_id}",
                                                  use_container_width=True):
                                         st.session_state[f"history_edit_{repair_id}"] = True
                                         st.rerun()
 
                                 with col2:
-                                    if st.button(f"Вернуть в работу", key=f"history_reopen_{repair_id}",
+                                    if st.button(f"🔄 Вернуть в работу", key=f"history_reopen_{repair_id}",
                                                  use_container_width=True):
                                         idx_repair = st.session_state.repairs[
                                             st.session_state.repairs['id'] == repair_id].index
@@ -1878,7 +1881,7 @@ class RepairERP:
                                             st.rerun()
 
                                 with col3:
-                                    if st.button(f"Удалить", key=f"history_delete_{repair_id}",
+                                    if st.button(f"🗑️ Удалить", key=f"history_delete_{repair_id}",
                                                  use_container_width=True):
                                         if self.delete_repair(repair_id):
                                             st.success("Ремонт удален из истории!")
@@ -1891,7 +1894,6 @@ class RepairERP:
                                 with col1:
                                     edit_gos = st.text_input("Госномер", value=repair['gos_number'],
                                                              key=f"history_edit_gos_{repair_id}")
-                                    # Безопасное получение индекса для repair_type
                                     try:
                                         repair_type_index = repair_types.index(repair['repair_type'])
                                     except ValueError:
@@ -1910,7 +1912,6 @@ class RepairERP:
                                         default=[e for e in current_employees if e in employees_list],
                                         key=f"history_edit_employees_{repair_id}"
                                     )
-                                    # Безопасное получение индекса для failure_reason
                                     try:
                                         reason_index = failure_reasons.index(repair['failure_reason'])
                                     except ValueError:
@@ -1991,7 +1992,7 @@ class RepairERP:
 
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("Сохранить изменения", key=f"history_save_{repair_id}",
+                                    if st.button("💾 Сохранить изменения", key=f"history_save_{repair_id}",
                                                  use_container_width=True):
                                         updated_data = {
                                             'gos_number': edit_gos,
@@ -2038,7 +2039,8 @@ class RepairERP:
                                             st.rerun()
 
                                 with col2:
-                                    if st.button("Отмена", key=f"history_cancel_{repair_id}", use_container_width=True):
+                                    if st.button("❌ Отмена", key=f"history_cancel_{repair_id}",
+                                                 use_container_width=True):
                                         st.session_state[f"history_edit_{repair_id}"] = False
                                         st.rerun()
                 else:
